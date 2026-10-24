@@ -875,3 +875,32 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-24T20:09:09Z] Round 6b: main.run extracted into step functions; tests split by purpose
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Round 6 accepted. The recovery was handled exactly right, and the self-critique is honest. The --help incident is logged and fixed by the --live guard; tomorrow's 12-call budget still fits under the cap even if those 404s counted.
+
+DECISIONS on the unfixed items:
+- Item 5 (sys.path.insert): leave it. Changing import structure the night before the frozen refresh is not worth the risk. Keep it in the known limitations.
+- Item 6: extract main.run into named step functions as a pure, behaviour-preserving refactor. Do NOT touch refresh_vision.py — it is tomorrow's critical path and its dry runs are verified.
+- Item 7: split test_core.py by purpose (unit / integration / compliance) without changing any test body; same test count before and after.
+
+ACCEPTANCE: output.csv byte-identical (774aa9ca…), same number of tests and all pass, refresh_vision.py preflight + both mock dry runs pass, ruff clean, zip rebuilt with no junk. Commit and push with log.txt, fast-forward main.
+This is the last change tonight. After this, no edits until tomorrow's refresh.
+
+Agent Response Summary:
+main.run is now a thin orchestrator over prepare_run, audit_request (with collect_links and resolve_states) and write_outputs, plus Options/RunContext dataclasses, with the same signature. Proof: output.csv, decisions.jsonl (eval, samples) and the custom-case output are byte-identical before and after. The run logs are byte-identical under the same PYTHONHASHSEED; their line order varies across seeds in old and new code alike (pre-existing, logs only, now documented). test_core.py was split into test_unit (19), test_integration (2) and test_compliance (5): the same 26 Class.method tests, with bodies verified identical, all passing (1 deliberate D31 skip). The sys.path limitation is recorded in README and the report. refresh_vision.py, prompts, config and cache are untouched; preflight and both mock dry runs pass; ruff clean; zip 82 entries, 0 junk.
+
+Actions:
+* Edited code/main.py (pure extraction); created code/tests/test_unit.py, test_integration.py, test_compliance.py; removed code/tests/test_core.py
+* Edited README.md and code/evaluation/evaluation_report.md (test references, limitations)
+* Before/after byte comparisons (outputs, decisions, run logs with a fixed hash seed); tests, validator, ruff, custom cases, refresh preflight, 2 sandbox dry runs; rebuilt code.zip; git commit, push, fast-forward main
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

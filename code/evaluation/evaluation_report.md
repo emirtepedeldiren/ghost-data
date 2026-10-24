@@ -62,7 +62,7 @@ response cache with 0 live calls (`usage_report.md`).<!-- /D31:cost -->
 | Failures found and improvements made | README, problem statement | §3 (before → after per round), §4 (failures and fixes), §5 (A/B), §7 (manual audit) |
 | Usage: providers, models, calls, input/output tokens, total and average tokens per request, total and per-request cost, per-model and overall | README, problem statement | `usage_report.md` |
 | Reports in `code/evaluation/`, metrics written in Markdown | README | this file and `usage_report.md` |
-| No hardcoded test labels or file-specific answers | task brief | `code/tests/test_core.py` `NoHardcodedAnswers`: the executable code of `code/audit`, `code/llm`, `main.py`, `contract.py` and `validate.py` contains no literal case/evidence/resource/user/activity/audit id or email (comments and docstrings excluded). <!-- D31:compliance -->**Known exception (fix pending, D31):** the cached screenshot responses were produced by a prompt that listed ids printed in the screenshots; the active prompt is clean (`PromptLeaks` test), see §8<!-- /D31:compliance --> |
+| No hardcoded test labels or file-specific answers | task brief | `code/tests/test_compliance.py` `NoHardcodedAnswers`: the executable code of `code/audit`, `code/llm`, `main.py`, `contract.py` and `validate.py` contains no literal case/evidence/resource/user/activity/audit id or email (comments and docstrings excluded). <!-- D31:compliance -->**Known exception (fix pending, D31):** the cached screenshot responses were produced by a prompt that listed ids printed in the screenshots; the active prompt is clean (`PromptLeaks` test), see §8<!-- /D31:compliance --> |
 | Gold answers never read by the pipeline | task brief | same test: a full sample run, with every file open recorded, never opens `sample_output.csv` (only the scorer reads it) |
 | Reads the CSV files and local media files | README, problem statement | same test: the run opens all 7 dataset CSVs and every file in `evidence_files.csv`, including the 11 PNGs and 4 PDFs |
 | Prompts in source / Markdown files | README | `code/prompts/intent.md`, `code/prompts/vision_extract.md` (hash-pinned in `code/config/frozen_v1.toml`) |
@@ -442,6 +442,10 @@ The eval set has no labels, and D20 alone changed the steps of 160 eval cases, s
 - **Screenshot Owner column.** The model reads Owner emails into attributes, but `vision.record_identifiers` ignores them. A zero-call replay
   that uses them changes 0 eval and 0 sample outputs, so it was not changed (D26).
 - **Activity-only proposals without observation** (`object_19`, `tombstone_17`) produce no step (D14).
+- **Not an installable package.** Entry points add `code/` to `sys.path` instead of using a `pyproject.toml` package. Changing the
+  import structure was deferred on purpose (Round 6) to avoid risk around the frozen run.
+- **Run-log line order is not deterministic.** The order of some log lines (e.g. post-audit links) follows Python's per-process string
+  hashing. `output.csv` and the decision logs are deterministic; with the same `PYTHONHASHSEED`, the run logs are byte-identical.
 - **Frozen to this dataset's cache.** A new dataset needs live calls (`--live`, a key in `.env`) to fill the cache for its texts and screenshots.
 
 ## 9. Rejected decisions

@@ -72,7 +72,7 @@ Full decision records are in `code/CONTRACT.md` (§14–§20); measurements are 
 | D27 | Subject with no observable record: explicit NO_OBSERVABLE_RECORDS branch | `code/main.py:run`, `code/validate.py:check_steps` |
 | D16 | Mechanical holdout (every 4th sample), aggregates only | `code/evaluation/splits.py:holdout_ids` |
 | D28, D29, D32 | Rejected: fitting one sample step; tie-breaking twins; record order as a signal (tested) | `evaluation_report.md` §8–§9 |
-| Compliance | No hardcoded ids, gold never read, every input read, prompts free of dataset ids | `code/tests/test_core.py:NoHardcodedAnswers`, `PromptLeaks` |
+| Compliance | No hardcoded ids, gold never read, every input read, prompts free of dataset ids | `code/tests/test_compliance.py:NoHardcodedAnswers`, `PromptLeaks` |
 
 ## Where the LLM is used, and why only there
 
@@ -105,6 +105,8 @@ round-by-round improvements: `code/evaluation/evaluation_report.md`.
 - **Assumed conditions.** Policy conditions that the evidence does not state (no retention date, no shared-context marker) are
   assumed met and logged (D23–D25).
 - **Fixed cache.** The frozen run serves only this dataset's cached LLM responses; new data needs `--live` and a key in `.env`.
+- **Not an installable package.** Entry points add `code/` to `sys.path` instead of using a `pyproject.toml` package; changing
+  the import structure was deferred to avoid risk around the frozen run.
 <!-- D31:readme -->
 - **Screenshot prompt refresh pending.** The cached screenshot responses were produced by a superseded prompt kept in
   `code/prompts/legacy/`; `code/tools/refresh_vision.py` (D31) re-extracts them with the neutral prompt.
