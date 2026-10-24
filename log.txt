@@ -856,3 +856,22 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-24T20:00:40Z] Round 6 addendum: ruff cache excluded from code.zip
+
+User Prompt (verbatim, secrets redacted):
+(same turn as the previous entry; no new user message)
+
+Agent Response Summary:
+The rebuilt code.zip had grown to 103 entries because ruff wrote code/.ruff_cache/ next to code/ruff.toml, and the official zip command reads the disk (git never tracked it). Set cache-dir to ../.work/ruff_cache, deleted the stray folder and added .ruff_cache/ to .gitignore. code.zip is back to 80 entries with 0 junk entries. Then verified a clean install of the committed state with the pinned requirements.
+
+Actions:
+* Edited code/ruff.toml (cache-dir) and .gitignore; removed code/.ruff_cache; rebuilt code.zip; git commit, push, fast-forward main; clean clone + venv + run + diff
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

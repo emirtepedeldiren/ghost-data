@@ -1,6 +1,7 @@
 # Lint standard for this project: pyflakes (unused imports/variables, undefined names), syntax and statement errors,
 # loop-variable capture, unused unpacked variables and stale noqa directives. Run: ruff check code
 line-length = 140
+cache-dir = "../.work/ruff_cache"   # keep the cache out of code/ (and out of code.zip)
 
 [lint]
 select = ["F", "E4", "E7", "E9", "B023", "RUF059", "RUF100"]
