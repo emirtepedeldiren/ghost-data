@@ -161,6 +161,46 @@ decision that caused it; with every flag off the output is byte-identical to Rou
 
 Final eval: 356 INCOMPLETE, 152 COMPLETE, 10 NOT_APPLICABLE. No COMPLETE row has empty steps.
 
+### 3.7 Round 3 audit: policy conditions on eval-only data (no fixes yet)
+Tool: `python3 code/evaluation/policy_coverage.py` → `code/evaluation/policy_coverage.md` (coverage table, 2 seeded examples
+per category and branch with the raw evidence line and steps, and the full list of undeterminable conditions). No labels are used.
+
+**Finding 1: the pipeline never reads the `condition` column.** `reconstruct.py:38` maps category → action. Each
+condition is either assumed met, or decided implicitly by a state rule:
+
+| Rule | Condition | How the code treats it | Code path |
+|---|---|---|---|
+| rule_05 SUPPORT_MESSAGE | shared context must be retained | assumed met → REDACT; the support message/attachment split comes from the category, not this condition | `reconstruct.py:59-66`, `vocab.py:52,73-74`, `common.py:85-90` |
+| rule_06 SUPPORT_ATTACHMENT | belongs only to the subject | assumed met → DELETE; co-ownership is never checked | `vocab.py:75`, `logs.py:88`, `pdf_text.py:42` |
+| rule_07 ANALYTICS_PROFILE | still attributable | **evaluated implicitly**: identifiers present → PRESENT (anonymize); all null → ANONYMIZED (verify only) | `common.py:81-82`, `logs.py:81-83`, `vision.py:100-102` |
+| rule_11 EMAIL_DELIVERY_LOG | log contains an email | never reached (0 resources); the default state rule would not check for an email | `common.py:91` |
+| rule_12 SECURITY_AUDIT_LOG | within retention | **assumed met**: any present record → RETAINED; `retention_until` is never parsed (CONTRACT §6 says "retention_until > T", and the code does not do it) | `common.py:79-80`, `logs.py:89`, `vision.py:98-99`, `pdf_text.py:44`, `vocab.py:121` |
+| rule_13 LEGAL_HOLD_RECORD | hold active | **assumed met**, same paths, plus `logs.py:100` | as rule_12 |
+| rule_14 BACKUP_ARCHIVE | restore can be blocked | assumed met; the action is hard-coded to BLOCK_RESTORE, while restore state is evaluated from flags (plus D22) | `reconstruct.py:64-65`, `common.py:77-78`, `logs.py:93-97`, `vision.py:92-97`, `reconstruct.py:125` |
+| rule_15 ACCOUNT_TOMBSTONE | account deleted, only user_id needed | assumed met → REDACT; only identifier presence is evaluated | `common.py:83-84`, `vision.py:100-102` |
+| (DATA_FLOW) | no rule in deletion_rules.csv | hard-coded DISABLE_FLOW | `reconstruct.py:62-63` |
+| (worker hint) | D5 rule 2 | with no explicit category, the worker's attempted operation sets the action and the rule is bypassed. 132 accounts, all DELETE = rule_01, so no output effect | `reconstruct.py:50-55` |
+
+**Finding 2: expiry never occurs in the participant data.** Every retention/hold end date in the evidence is in 2027–2034:
+audit records 2031-12-31 ×28, 2032-06-30 ×21, 2033-12-31 ×31, 2034-09-30 ×24, one PDF 2027-08-25; legal holds 2033-12-31 ×10.
+The latest audit_at is in October 2026. Evaluating rule_12/13 would therefore change **0** eval outputs. The hypothesis that
+an expired retention must not be retained cannot be tested or contradicted with this data.
+
+**Finding 3: undeterminable conditions (431 resources) and what the code did** (in every case the condition is assumed met):
+
+| Category | Undeterminable (`<= audit_at`) | With post-audit evidence too | What the code did |
+|---|---|---|---|
+| SECURITY_AUDIT_LOG | 323 of 422 | 323 (no file states their retention date) | VERIFY_RECORD_PRESENT |
+| SUPPORT_MESSAGE | 95 of 170 | 84 | REDACT (137 exposed → REDACT_RECORD; 33 verify only) |
+| ACCOUNT_TOMBSTONE | 7 of 9 | 7: in 6 cases (543, 544, 547-550) no account is linked at all (they sit in the L2 ambiguous slots), and 1 is `tombstone_17` (catalog only, no step) | REDACT |
+| LEGAL_HOLD_RECORD | 3 of 8 | 2 | VERIFY_RECORD_PRESENT |
+| SUPPORT_ATTACHMENT | 2 of 14 | 1 (`object_19`, no step, D14) | DELETE |
+| BACKUP_ARCHIVE | 1 of 59 | 0 (`backup_9287`, the D22 case) | REPORT_RESTORE_RISK |
+
+**Finding 4: rules that never fire on eval.** rule_02 SECONDARY_IDENTIFIER, rule_04 CACHE_ENTRY, rule_08 PRODUCT_TELEMETRY and
+rule_11 EMAIL_DELIVERY_LOG have no linked resource. `cache_*` and `email_delivery_*` ids occur only in activity rows (INDEX/SEND_EMAIL
+traffic), never in an evidence file. MARKETING_PROFILE fires once (case_63). USER_EXPORT does occur in the samples (case_23 `export_7364`).
+
 ## 4. Model selection
 
 ### 4.1 Intent (D1, D17)

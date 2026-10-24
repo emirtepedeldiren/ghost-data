@@ -354,3 +354,44 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-24T14:38:32Z] Round 3 audit: policy condition coverage, code paths, quota budget
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Round 2 accepted. Holdout improved at the same rate as tuning (sequence 37.5 → 62.5) — the strongest sign so far that L2 generalizes. The remaining 8 tuning misses are irreducible by design. Tuning is near its ceiling, so Round 3 shifts to the biggest unmeasured risk.
+
+ROUND 3 — policy coverage on eval-only data
+EVIDENCE: several categories never appear in the 32 samples: CACHE_ENTRY, EMAIL_DELIVERY_LOG, LEGAL_HOLD_RECORD, MARKETING_PROFILE, USER_EXPORT. Their rules — and every conditional rule (rule_05 shared context, rule_06 attachment owned only by the subject, rule_07/08 still attributable, rule_11 log contains email, rule_12 within retention, rule_13 hold active, rule_14 restore can be blocked, rule_15 tombstone) — are unvalidated.
+MY HYPOTHESIS: the hidden answers differentiate on these conditions (e.g. an expired legal hold or an expired retention period must NOT be retained).
+REQUEST, investigate first:
+  1. Coverage table over the 518 eval outputs: per data_category → count of resources, which rule fired, which condition branch was taken (met / not met / undeterminable), and the resulting operations.
+  2. For every conditional rule: does the code evaluate the condition from evidence, or assume it? Show the code path.
+  3. For each category and each condition branch, show 2 eval examples (raw evidence line + produced steps) for me to audit.
+  4. List every case where a condition could not be determined, and what the code did.
+No code changes in this step — I decide fixes after the audit.
+
+ALSO IN THIS ROUND (after the audit, small and independent):
+  A. Screenshot prompt gap: emails in the "Owner" column are not extracted. BEFORE changing the prompt, compute the API quota budget: calls used today per model, calls this change needs, calls the final cold run needs (D-frozen). If it does not fit the free-tier daily caps, tell me before calling.
+  B. Turn E1–E5 into runnable evaluation cases under code/evaluation/ (inputs + expected output + pass/fail), included in evaluation_report.md.
+  C. case_17's account_6523: investigate only. Your calibration shows it belongs to case_46's request window. Propose a rule; do not implement yet.
+
+DEFER: usage_report.md comes from the frozen final run, not now.
+
+ACCEPTANCE (this turn): the coverage table, the condition code paths, the audit examples, the undeterminable list, and the quota budget. Commit and push at the end (standing rule).
+
+Agent Response Summary:
+Built a read-only audit tool (code/evaluation/policy_coverage.py) that writes code/evaluation/policy_coverage.md: coverage per category, 2 seeded examples per category and branch, and all undeterminable conditions. The pipeline never reads the condition column. rule_07 is evaluated implicitly through state; rule_05/06/12/13/14/15 are assumed met; DATA_FLOW and the worker-hint path bypass the rule table. Every retention/hold date in the evidence is 2027-2034, so expiry never occurs and evaluating rule_12/13 would change 0 outputs. 431 resources have undeterminable conditions (323 audit records without any retention date). Quota: logged API successes today are 2.5-flash 16, 3.5-flash-lite 11, 3.6-flash 16. The Owner-prompt change needs 11 lite calls (the system prompt is in the cache key) and the cold run 5 + 11. Under the observed 20/day cap neither fits today, so no API call was made; B, C and the prompt change are not started (outside this turn's acceptance).
+
+Actions:
+* Created code/evaluation/policy_coverage.py and the generated code/evaluation/policy_coverage.md; added section 3.7 to code/evaluation/evaluation_report.md
+* Read reconstruct.py, vocab.py, parsers/common.py, parsers/logs.py, parsers/pdf_text.py, vision.py, llm client; counted code/cache/llm_calls.jsonl
+* WebFetch of the Gemini rate-limits page (no per-model numbers published; RPD resets at midnight Pacific)
+* git commit and push to phase0-contract-and-eval; no pipeline code changed, output.csv unchanged
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
