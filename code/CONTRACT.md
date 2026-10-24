@@ -1,13 +1,15 @@
 # CONTRACT.md — Ghost Data Still Exists deletion-audit agent
 
-Status: **DRAFT v0.2** (2026-10-24). Built so far: `code/contract.py` (shared rules), `code/validate.py` (§11),
-`code/evaluation/main.py` (§12), `code/tools/list_models.py` (N2). No pipeline code yet. Decisions D1–D14 are the
-user's; items marked **OPEN** await a decision.
+Status: **v1.0, frozen** (2026-10-24, Phase 4: `code/config/frozen_v1.toml`). Built: `code/contract.py`, `code/validate.py`, `code/evaluation/main.py`,
+the deterministic core `code/audit/` + `code/main.py`, the provider-agnostic client `code/llm/` (not yet wired in),
+`code/tools/list_models.py`, unit tests `code/tests/`. Decisions D1–D15 are the user's.
 
-**Core principle (D11):** activity rows are claims. A resource is linked to a subject, or assigned a state, **only through
-an observed evidence file** (log, JSON, SQL, TXT, PDF, PNG). An activity row may *corroborate* an observation; it never
-creates a link or a state on its own. The single exception is the experimental `--timing-links` module (§8), which is
-off by default and exists only for the D3 A/B comparison.
+**Core principle (D11 revised):** an activity row may *propose* a resource-to-user link. **State and citations come only
+from observed evidence files.** When an observation contradicts an activity claim, the observation wins. D13 and D14
+still hold. D13 was revised in Round 2 (§18): an observation vetoes a proposed link only when the identity it shows resolves
+to a different known user. object_19 has no observed state.
+**D15/D20:** the timing module is a normal link source under D11. Since Round 2 it is the L2 rule and on by default
+(`--no-timing-links` disables it).
 
 Precedence when sources disagree on the output format: `problem_statement.md` > `README.md` > `AGENTS.md` (D6).
 Precedence for packaging paths: `README.md` (D8).
@@ -124,11 +126,11 @@ S1 load ─► S2 intent ─► S3 identity ─► S4 extract ─► S5 link ─
   `^user_\d+$`, email RFC-lite). A non-matching value is stored as `unparsed` and flagged, never guessed.
 - Cross-check: each of the 11 PNGs (and the account-history PDF) has a `LINK_RESOURCE_IDENTITY` activity
   timestamped exactly `captured_at + 7 min` (activity_4000–4011). Per D11 the activity only **corroborates**. The
-  screenshot content is the observation. When they disagree, the resource is **unlinked and flagged** (D13), never
-  attributed from the activity.
-- D13 (resolved): `marketing_profile_console.png` shows *Soo-jin Park / sj.park@naver.com / +82 10-5837-9451 /
-  marketing_001*. A search of `user_audit_log.csv` old/new values and `user_identities.csv` (email, name, digit-normalized
-  phone) found **no match** (2026-10-24), so marketing_001 stays unlinked. `activity_4008` → user_09 is a claim only.
+  screenshot content is the observation. When the screenshot shows an identity that resolves to a **different known user**,
+  the activity's link is vetoed. When it resolves to no one, the link is kept and flagged in the run log (D13 revised, §18).
+- D13 (revised): `marketing_profile_console.png` shows *Soo-jin Park / sj.park@naver.com / +82 10-5837-9451 /
+  marketing_001*. That identity matches no user, so `activity_4008` links marketing_001 to user_09 (case_63), flagged
+  `identity-mismatch`.
 
 ## 5. Observation schema (output of S4)
 
@@ -162,10 +164,14 @@ corroboration (e.g. `CHECK_DATA_FLOW … remains enabled` agreeing with a connec
 | connector `enabled=false` / `DISABLED` | FLOW_DISABLED |
 | backup `restore_allowed=1` / `ACTIVE` / CHECK_RESTORE_ACCESS "can still be restored" | RESTORE_ALLOWED |
 | backup `restore_allowed=0` / `BLOCKED` | RESTORE_BLOCKED |
-| audit record present, `retention_until > T` | RETAINED |
+| audit record / legal hold present; rule_12/13 condition evaluated from the stated end date (D23, §19) | RETAINED, or PRESENT with action DELETE when the end date `<= T` |
 
-**Absence by snapshot coverage** (from sample case_01/02/04, all citing evidence_54): a snapshot that covers a
-system's table and lacks the resource's row proves ABSENT for that system at its `captured_at`.
+**Absence by omission (Round 1, rule (c), `--absence-rule fallback_delete`, default).** A snapshot that lists a collection and
+omits the resource proves ABSENT **only if** (1) there is no explicit observation of the resource `<= audit_at`, and (2) the
+resource's policy is DELETE. Omission from a partial snapshot can show deletion, never that a retained or redacted record is gone.
+Rejected alternatives, measured on the tuning split, are in evaluation_report.md §3.1. Explicit observations come first, so
+the evidence cited for absence is the latest explicit 404 / NOT_FOUND / rows=0 file, and a snapshot only when none exists
+(rule R4, 8/8 fit). Each copy is its own **store**: a replica table is not cleared by a primary-store snapshot.
 
 **Replica drift** (verified, must not be missed): 13 rows across 11 SQL files exist **only in a replica**
 (`*_replica*` table) and not in `*_primary`. Each maps to exactly one case. Examples: evidence_54 → account_005 (case_05),
@@ -214,15 +220,18 @@ inclusive boundary is load-bearing.
 | RETAIN (audit / legal hold) | RETAINED | — | — | VERIFY_RECORD_PRESENT |
 | data flow | FLOW_ACTIVE | REPORT_ACTIVE_DATA_FLOW | DISABLE_DATA_FLOW | VERIFY_DATA_FLOW_DISABLED |
 | data flow | FLOW_DISABLED | — | — | VERIFY_DATA_FLOW_DISABLED |
-| BACKUP_ARCHIVE (RETAIN + block) | RESTORE_ALLOWED | REPORT_RESTORE_RISK | BLOCK_RESTORE | VERIFY_RESTORE_BLOCKED |
+| BACKUP_ARCHIVE (RETAIN + block) | RESTORE_ALLOWED (incl. D22) | REPORT_RESTORE_RISK | BLOCK_RESTORE | VERIFY_RESTORE_BLOCKED |
 | BACKUP_ARCHIVE | RESTORE_BLOCKED | — | — | VERIFY_RESTORE_BLOCKED |
 
 - `deletion_status = INCOMPLETE` iff any FINDING exists, otherwise `COMPLETE`.
 - **Verification covers every relevant resource**, including ones already compliant (sample case_11 steps 9 and 11, and case_06).
+- **Fix 2 (Round 1).** In an INCOMPLETE case, a resource linked through an evidence file but with no state observation
+  `<= audit_at` gets the verification of its required final state (empty evidence). Activity-only links get no step (D11, D14).
 - ACCOUNT_TOMBSTONE: the stable `user_id` reference may remain; name, email, phone and email_hash must be null.
 - The DELETE vs ANONYMIZE choice for an analytics record that is "no longer attributable" follows §7.1.
 
 ### 7.3 Evidence citation (D4)
+- (R4, 8/8 on tuning gold) For absence, the latest explicit absence observation wins over any later snapshot omission.
 - Findings and COMPLETE verifications cite the **latest evidence file** (`captured_at <= T`) that observes the
   resource in the state being claimed (absence-by-coverage counts as observing). Activity ids are not cited for
   state (D11). Consistent with the gold: of 193 sample steps, all 75 non-empty citations are `evidence_*` file ids
@@ -237,12 +246,14 @@ inclusive boundary is load-bearing.
 |---|---|---|
 | `identifier` | a subject identifier co-occurs with the resource_id inside one unit (§4 S4 table) of a file with `captured_at <= T` | on |
 | `identifier_post_audit` | same, in a file captured after T (D12); ownership only, never state or citation | on (`--no-post-audit-links` disables) |
-| `timing` (D3) | deletion_worker events in `[requested_at, reported_at]` whose result matches `reported_status`; global one-to-one assignment across all cases; link **only when exactly one candidate remains**; ambiguous candidates are logged and left unlinked. **Activity-created link = explicit exception to D11.** The linked resource still needs a file observation for its state | **off** by default, flag `--timing-links` |
+| `catalog` | `LINK_RESOURCE_IDENTITY` activity naming a subject identifier (proposal, D11 revised) | on |
+| `identifier_post_audit_unit` (D21) | same as `identifier_post_audit`, but the unit's own timestamp is also after T. The resource gets a step only from a state observation `<= T`, and never a fix-2 verification | on (`--no-post-audit-unit-links`) |
+| `timing` (D20, rule L2) | worker schedule relative to `reported_at`, global unique assignment (§18) | on (`--no-timing-links`) |
 
-`LINK_RESOURCE_IDENTITY` activities are **not** a link source (D11). They are only logged as corroboration.
-Consequences of D11 accepted by the user: `object_19` (activity_4007 only) is excluded (D14, matches case_07 gold), and
-`marketing_001` is unlinked (D13). Sample resources whose only link is an activity row (e.g. case_03 `analytics_9406`,
-case_21 `account_6440`, case_01 `account_001`) are expected misses in the default run.
+`catalog` (D11 revised, D13 revised): a `LINK_RESOURCE_IDENTITY` activity naming a subject identifier proposes a link. The
+proposal is vetoed when an observation of the resource shows an identity that resolves to a different known user. An identity
+that resolves to no one is flagged, not vetoed. A linked resource without any file observation `<= audit_at` gets no state, so
+`object_19` produces no step (D14).
 
 D3 investigation result (2026-10-24): **no explicit join exists** for `analytics_9406` (case_03) or
 `account_6440` (case_21). Each id occurs in exactly three places: one activity row (`activity_3852`, `activity_3661`),
@@ -252,32 +263,27 @@ events. The only `batch=` keys (`rp-7718`) belong to an unrelated support-replic
 leaves 1 candidate in only 5 of the 32 samples. A loose identifier linker leaves 36 of 152 sample step resources unlinked.
 The A-vs-B comparison is reported in the evaluation report.
 
-## 9. LLM usage (D1, D2, D10)
+## 9. LLM usage (D1, D2, D10 revised)
 
-Policy (N2 decision): use the **newest Haiku** for intent and the **newest Sonnet** for vision, as returned by the Models
-API (`GET /v1/models`) for our key. Run `.venv/bin/python code/tools/list_models.py`; it prints model IDs, created_at and
-vision support, never the key.
+Provider: **Google Gemini** (D10 revised). Client: `code/llm/__init__.py`, one interface `LLMClient.generate(task, prompt,
+images=, json_schema=)`. Provider, per-task model IDs and list prices live in `code/config.toml`, never in logic. Responses
+are cached on disk (key = provider + model + task + inputs), and every call is appended to `code/cache/llm_calls.jsonl` with
+token usage. `temperature` is sent and, if a model rejects it, retried once without it and memoized for that model.
 
-| Use | Model ID | Price in/out per MTok | Status |
+Models API listing (`.venv/bin/python code/tools/list_models.py`, 2026-10-24): 46 generateContent models. Image-input
+support is not a field of the Gemini models API, so it is taken from the pricing page.
+
+| Use | Model in `config.toml` | List price in / out per 1M tokens | Status |
 |---|---|---|---|
-| intent (S2) | **PENDING Models API** (expected `claude-haiku-4-5`) | $1 / $5 (expected) | unconfirmed |
-| screenshots (S4) | **PENDING Models API** (expected `claude-sonnet-5`) | $2 / $10 (expected) | unconfirmed |
+| intent (S2) | `gemini-2.5-flash`, **batched** (80 texts per call, 5 calls for 398 unique texts) | $0.30 / $2.50 | **D18 approved** |
+| screenshots (S4) | `gemini-3.5-flash-lite` (won the D17 comparison) | $0.30 / $2.50 | chosen by data (evaluation_report.md §4.2) |
 
-Status 2026-10-24: **not yet confirmed**. No `.env`, no `ANTHROPIC_API_KEY` in the environment, and no `ant` CLI profile were
-found, so the Models API could not be called. The "expected" values come from Anthropic's claude-api reference
-(price table cached 2026-06-24) and are **placeholders until the API listing is run**. Prices are not returned by the
-Models API; they are recorded from the pricing reference with its date.
+D17 approved `gemini-3.8-flash` for intent; it timed out on every request on 2026-10-24. `gemini-3.6-flash` then hit the
+free-tier quota (20 requests/day/model). On the free tier a run is feasible only with batching and the cache.
 
-**Sampling parameters.** `temperature` is sent only to models that accept it. Implementation: send `temperature=0`; if the API
-returns `BadRequestError` naming the sampling parameter, retry once without it and memoize "no sampling" for that
-model ID for the rest of the run (logged). Expected: Haiku accepts it; Sonnet 5-class models reject sampling parameters,
-so vision determinism comes from the on-disk cache and structured output.
-
-The key comes from the `ANTHROPIC_API_KEY` env / uncommitted `.env` only (`.env` and `.venv/` are gitignored; verified).
-
-Per-call usage log `code/cache/llm_calls.jsonl` (gitignored, a raw data file): `{ts, stage, model, cache_hit, input_tokens,
-output_tokens, cache_read_input_tokens, latency_ms}`. `code/evaluation/usage_report.md` is generated from it for the final
-full run (calls, tokens, totals, per-request averages, cost by model and overall). Expected scale: about 27 + 11 calls.
+Price source: https://ai.google.dev/gemini-api/docs/pricing (page "last updated 2026-10-22"). `usage_report.md` reports cost at
+these list prices even on the free tier. Until approval: intent uses the keyword fallback (labelled TEMPORARY in code and
+run log), and PNGs are a stub that logs "vision pending".
 
 ## 10. Decision log
 
@@ -294,6 +300,10 @@ vision mismatch, post-T file skipped). This feeds the evaluation report and the 
 5. Every cited evidence_id exists in the manifest / activity / audit log and has `observed_at <= audit_at`.
 6. There is no remediation without a matching finding, and every remediated resource has a matching verification.
 7. Regression: the 32 samples are scored by `code/evaluation/main.py` (metrics in §12).
+8. `COMPLETE`/`INCOMPLETE` with an empty array is reported as a **warning** (`NO_OBSERVABLE_RECORDS`, D27), not a failure: the
+   problem statement does not forbid it, but it is a known limitation. 0 of 518 eval rows hit it.
+Unit tests: `python3 -m unittest discover -s code/tests` (token boundaries incl. support_864 vs support_8642, identifier
+normalization, historical-email resolution, all six log dialects, ordering, intent fallback).
 
 ## 12. Evaluation (`code/evaluation/main.py`; written up in `code/evaluation/evaluation_report.md`, D8)
 
@@ -322,7 +332,7 @@ These cases reuse real dataset identities and evidence. Only the request row is 
 | E1 | `kwame-mensah@proton.me`, text "Please remove me from marketing lists only. Keep my account and orders." | `NOT_APPLICABLE, []` despite live marketing/account evidence for user_09 | deletion keyword + partial scope ≠ deletion |
 | E2 | `amara-okeke@proton.me`, Spanish: "No quiero eliminar mi cuenta; solo necesito una copia de mis datos." | `NOT_APPLICABLE, []` | negation in a non-English language |
 | E3 | `minjun.kim90@gmail.com` (historical email of user_12), Japanese correction request "電話番号を更新してください。アカウントは削除しないでください。" | `NOT_APPLICABLE, []`, and the subject must still resolve to user_12 in the decision log | historical identity + non-deletion |
-| E4 | clone of case_16 (`diya.k4436@outlook.com`) with `audit_at = 2026-09-21T09:59:59Z` (1 s before evidence_05) | `account_994` is **not** reported from evidence_05; state comes from earlier sources | inclusive cutoff and no post-T evidence |
+| E4 | clone of eval case_153 (`a.adeyemi9897@yahoo.com`) with `audit_at = 2026-08-02T06:59:59Z` (1 s before evidence_15). Originally a case_16 clone; moved off the holdout (D16) | no step cites evidence_15, and `account_8023` is not reported from it | inclusive cutoff and no post-T evidence |
 | E5 | `g.silva76@gmail.com`, deletion request, `audit_at = 2026-09-02T08:00:00Z` | `search_428` (user_13, evidence_09) is reported; `search_1874` (`g.silva76.jr@gmail.com`) appears in no step | near-miss decoy rejection + screenshot extraction |
 
 ## 14. Decision record for former open items
@@ -330,8 +340,8 @@ These cases reuse real dataset identities and evidence. Only the request row is 
 | Item | Decision | Status |
 |---|---|---|
 | N1 post-T linking | D12-A: ownership only, logged, flag to disable | resolved |
-| N2 model IDs | newest Haiku / newest Sonnet from the Models API | **blocked**: needs `ANTHROPIC_API_KEY` in `.env` |
-| N3 marketing_001 | D13-B: unlinked and flagged; identity search found no match | resolved |
+| N2 model IDs | D10 revised, D17: Gemini; see §9 | intent: substitute pending decision; vision: gemini-3.5-flash-lite by comparison |
+| N3 marketing_001 | D13 revised (Round 2): linked via activity_4008, flagged identity-mismatch | resolved |
 | N4 object_19 | D14-A: excluded (activity-only link, D11) | resolved |
 
 Original wording of the items, kept for traceability:
@@ -348,3 +358,100 @@ Original wording of the items, kept for traceability:
 - **N4 — `object_19`.** `activity_4007` says delivery_confirmation_19.pdf "belongs only to priya.raman@gmail.com and user_07",
   but sample case_07 gold contains only `support_001`, not `object_19`. No other source mentions object_19 after 2026-02-13.
   A: exclude the `object_*` system from findings unless a state observation exists ≤ T (matches the gold). B: report it as a remaining SUPPORT_ATTACHMENT.
+
+## 15. Baseline 2026-10-24 (32 samples, no tuning)
+
+| Metric | `--timing-links` off | on |
+|---|---|---|
+| status accuracy | 93.75% | 93.75% |
+| step precision / recall / F1 | 97.95 / 74.09 / 84.37% | 94.84 / 76.17 / 84.48% |
+| evidence_id accuracy (field) | 74.23% | 75.13% |
+| sequence accuracy | 15.62% | 15.62% |
+
+Missing gold steps by root cause, timing off (50 missing of 193; 49 by identity key):
+- 23: **identifier-free resources.** 404 account lookups without an email and anonymized analytics, linkable only through activity (13 activity-only plus 10 observed without identifiers).
+- 17: **state.** A later *partial* snapshot (evidence_51 at exactly `audit_at`, the empty inventory evidence_90) overrode an
+  explicit observation as "absent by coverage" (cases 05, 17, 21, 24, 25, 27, 28).
+- 6: **intent.** The temporary keyword fallback missed case_26 ("confirm that the profile is gone").
+- 3: **unreachable.** `audit_record_5569`, `audit_record_6645` and the INCOMPLETE-only verification of post-audit-linked `audit_record_4128` have no `<= audit_at` observation (two ids occur in no participant file).
+
+Extra steps: 2 with timing off (one stale March lookup `account_6523`, one catalog proposal `tombstone_17`); 5 with timing on (+3 wrong
+timing assignments). No parser gaps, identity misses or ordering errors among the top-10 diffs. **No fix has been applied yet** (user instruction).
+
+## 16. Round 1 decisions (2026-10-24)
+- **D16 holdout:** case_04, 08, 12, 16, 20, 24, 28, 32 (every 4th, `code/evaluation/splits.py`). Aggregates only; contamination
+  before the freeze is disclosed in evaluation_report.md §1.1.
+- **D17:** LLM intent wired in (batched, cached); vision comparison done; `gemini-3.5-flash-lite` chosen.
+- **State:** absence rule (c) plus fix 2 restricted to evidence-linked resources. 12 → 0 state-caused misses on the tuning split.
+- **Citation:** R4 (explicit absence observation first) fits 8/8 tuning absence citations.
+- **Irreducible:** `audit_record_5569` and `audit_record_6645` occur in no participant file.
+
+## 17. Decisions D18, D19 and standing rule (2026-10-24)
+- **D18 (intent model, replaces D17 for intent):** batched `gemini-2.5-flash`. Billing is not worth it for a cached step.
+  Condition: each batch response must return exactly the input ids (no missing, extra or duplicate ids), or the whole batch
+  falls back to the keyword rules. Every text where the LLM and the keyword rules disagree is listed in the run log
+  (`intent disagreement ...`) for manual review.
+- **D19:** absence rule (c) is the default (`--absence-rule fallback_delete`). Omission can prove a record was deleted, never
+  that a retained record is gone. Fix 2 is restricted to evidence-linked resources, consistent with D14.
+- **Standing rule:** at the end of every round, commit and push to the working branch without asking.
+
+## 18. Round 2 decisions (2026-10-24)
+- **D20 (linking rule L2), without the closed-world guard.** Pool: requests (eval + sample request rows, never answers) that
+  authorize deletion and resolve to a subject.
+  - Account DELETE events: event in `[reported_at - 80 min, reported_at + 10 min]`; result compatible (COMPLETE→SUCCESS,
+    NOT_STARTED→FAILED, PARTIALLY_COMPLETE→PARTIAL|SUCCESS); not observed to belong to another user; the subject owns no
+    account through identifier evidence.
+  - Follow-up worker actions on other resources: event in `[reported_at - 35 min, reported_at)`; no result filter; not
+    observed to belong to another user; the subject has no resource of that type yet (owned or assigned). A resource owned
+    only by people without a request goes to nobody.
+  - Elimination repeats until stable. A link is made only when exactly one candidate remains. Ambiguous events are logged with
+    their candidates and never tie-broken (order, jitter and case_id were checked and are not signals).
+  - Calibration without labels (eval identifier-linked worker events): account deletes p1..p99 = -74.8..-44.0 min; policy
+    follow-ups -29.0..-2.9 min. Two account events fall outside, and both belong to a different request by the same subject.
+    The bounds are unchanged (evaluation_report.md §3.6).
+- **D21 (D12b).** Ownership from post-audit units whose own timestamp is after T. Such a link produces a step only from a
+  state observation `<= T`, and never a fix-2 verification.
+- **D22.** A backup observed `<= T` that holds one of the subject's identifiers, with no restore state observed `<= T`, is
+  RESTORE_ALLOWED → REPORT_RESTORE_RISK. COMPLETE needs positive proof of a block.
+- **D13 (revised).** An observation vetoes a proposed link only when the identity it shows resolves to a different known user.
+  An identity that resolves to no one is flagged in the run log and does not veto. Rationale: it matches L2's "belongs to
+  someone else" rule, D22 makes an empty COMPLETE unprovable, and a missed record is the costly failure.
+
+## 19. Round 3 decisions (2026-10-24)
+- **Refuted hypothesis:** "hidden answers differentiate on expired retention/holds". Every retention/hold end date in the
+  participant data is in 2027–2034, after every audit_at, so condition evaluation changes 0 of the 518 outputs.
+- **D23:** rule_12 / rule_13 are evaluated. The latest end date (`retention_until` / `retained_until` / PDF "retain until")
+  captured `<= audit_at` decides: after audit_at → RETAIN; at or before → DELETE (the record becomes a remaining record).
+  With no date, the rule is assumed met, and this is an explicit branch logged per resource in the run log and decision log
+  (`rule_12 undeterminable: ... assumed met (D23)`). Eval: rule_12 99 met / 323 undeterminable; rule_13 5 met / 3
+  undeterminable. output.csv is byte-identical before and after.
+- **D24:** a tombstone's existence satisfies rule_15's "account is deleted", including the 6 tombstone cases with no linked account.
+- **D25:** rule_05 without visible shared context stays REDACT. Tuning gold check: all 7 resources the evidence labels
+  SUPPORT_MESSAGE are REDACT. The 3 deleted support_* resources are 2 explicit SUPPORT_ATTACHMENTs plus `support_002` (case_10), a
+  `legacy_contact_index` entry with no stated record type that our worker-hint rule already deletes. All 170 eval
+  SUPPORT_MESSAGE resources have an explicit category.
+- **D26:** free tier only. The final run is served entirely from the response cache (0 live calls). The 16 cache entries the
+  output depends on (5 intent batches gemini-2.5-flash, 11 screenshots gemini-3.5-flash-lite) all store token counts, and the
+  totals equal the original call log (19,480/29,246 and 15,965/8,322 tokens, created 2026-10-24T13:58–14:01Z). No prompt change
+  that invalidates the cache is made unless it has a non-zero impact and fits the remaining quota.
+- **Owner-column gap (known limitation, not fixed per D26):** the screenshot model *does* read the Owner column (attributes);
+  `vision.record_identifiers` ignores attribute emails. A zero-call replay that reads them changes 0 eval and 0 sample outputs:
+  `export_1260` (ingrid.dahl@outlook.com, user_18) already reaches cases 33 and 52, and the other three owners are staff
+  addresses that match no user.
+- **Proposed, not implemented (C):** request scoping. When a subject has an earlier deletion request, a resource whose every
+  observation predates that request's audit_at belongs to the earlier request. It drops only `account_6523` from case_17 (the
+  1 tuning extra) and changes 0 eval outputs.
+
+## 20. Phase 4 decisions and freeze (2026-10-24)
+- **D27:** a deletion subject with no observable record `<= audit_at` (or an unresolved identity) keeps COMPLETE with `[]`, but as an
+  explicit branch: `NO_OBSERVABLE_RECORDS` in the run log and decision log, and a validator warning. 0 of 518 eval rows hit it
+  (custom case E4 does). The schema offers no status that is both honest and provable here.
+- **D28 (rejected):** request scoping for `account_6523` (case_17). It fixes 1 tuning step and changes 0 eval outputs: fitting, not generalizing.
+- **D29 (rejected):** a deterministic tie-break that assigns interchangeable twin resources to one candidate request. An audit tool must not
+  attribute another person's data to a requester.
+- **Freeze:** `code/config/frozen_v1.toml` (sha256 `23f3756663ed21faee986f397344a1c43e7479dfe540764dc570fba87c1e6aa9`) pins the models, prompt
+  hashes, L2 thresholds, intent batch size and pipeline flags. `python3 code/main.py` loads it by default and aborts on any mismatch with
+  the code. The run is cache-only: the 17 needed responses (16 production, 1 evaluation) are committed in `code/llm_cache/` with their
+  original call-log rows in `code/llm_cache/calls.jsonl`. A cache miss raises `CacheMiss` and aborts the run; no key is needed.
+  Output sha256 `774aa9ca3e0073383fc9251ce17217b684c4b06161c5385c712945a420d1cb1f`.
+- Dev artifacts (run logs, decision logs, scratch predictions, the per-call log) live in the gitignored `.work/`, outside `code/`.

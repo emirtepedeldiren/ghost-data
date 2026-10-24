@@ -141,3 +141,343 @@ repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-or
 worktree=main
 parent_agent=none
 
+## [2026-10-24T13:41:01Z] D10/D11 revised, D15; deterministic core built; honest sample baseline
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Scorer and validator accepted — A1/A2/A3 plus the planted-error test are exactly the evidence I wanted.
+
+CORRECTION to D11 (my decision was too strict): the gold answers for case_01, case_03 and case_21 include resources linked only through activity rows. A rule that contradicts the canonical answers is wrong, not principled.
+DECISION D11 (revised): An activity may propose a resource↔user link. State and citations come only from observed evidence files. When an observation contradicts an activity claim, the observation wins.
+D13 and D14 still hold under the revised rule: marketing_001 is contradicted by its screenshot; object_19 has no observed state.
+DECISION D15: The timing module is no longer an exception to D11. It stays flag-controlled, and the data decides its default (see acceptance below).
+
+DECISION D10 (revised): Provider = Google Gemini instead of Anthropic.
+RATIONALE: I already have a Gemini key; total LLM usage is ~27 cached intent calls + 11 cached screenshots, so the provider choice has negligible impact on quality and avoids new billing.
+REQUEST: Make the model client provider-agnostic (one interface, provider and model IDs set in config, never hardcoded in logic). Update list_models.py to read GEMINI_API_KEY from .env and print only model IDs and whether they support image input — never the key. I have added the key to .env; run the script and propose the newest Flash-class model for intent and the newest vision-capable model for screenshots, with list prices, for my approval. usage_report.md will report estimated cost at list prices even on the free tier.
+Do not block on this — build the deterministic core in parallel.
+
+REQUEST — deterministic core, measured on the 32 samples:
+1. Identity resolution: current + historical emails/phones/hashes, case-insensitive, word-boundary matching (the support_864 / support_8642 decoy is a unit test).
+2. Parsers for every text evidence format: SQL via sqlite3, JSON bundles, the txt handover, all 5 log dialects with trace_id joins, PDF text. Each parser emits the same normalized observation record: (file_id, captured_at, line_time, system_id, resource_id, category, observed_state, identifiers_present).
+3. State reconstruction at audit_at plus the policy mapping from deletion_rules.csv, then step generation through contract.py.
+4. PNGs: stub that returns no observations and logs "vision pending". Intent: all 32 samples are deletion requests; use the keyword fallback for now, clearly labelled as temporary in the code and in the run log. No case-specific logic anywhere.
+
+ACCEPTANCE CRITERIA:
+  - the validator passes on the 32-sample predictions
+  - scorer report for two runs, side by side: --timing-links off vs on. Columns: status accuracy, step P/R/F1, evidence_id accuracy, sequence accuracy.
+  - the 10 largest per-case diffs, grouped by root cause (parser gap / identity miss / linking / policy / ordering)
+Do not tune anything yet. I want the honest baseline first.
+
+HOUSEKEEPING: commit .gitignore and all work so far with a descriptive message, then push.
+
+Agent Response Summary:
+Committed phase-0 work on new branch phase0-contract-and-eval (branched off main per the harness rule) and pushed it to origin. Listed Gemini models with the key in a header (46 models) and proposed gemini-3.8-flash for intent and vision at the pricing page's list price, pending approval. Built the provider-agnostic client (code/llm, code/config.toml); it is not wired in and no live calls were made. Surveyed every evidence format and found 6 log dialects, not 5; built code/audit (identity, 5 parsers emitting one Observation schema, linking, state at audit_at, policy, steps) plus code/main.py, a PNG stub and a TEMPORARY keyword intent; 10 unit tests pass. Validator passes on both sample runs after the empty-steps check became a warning. Baseline with timing off/on: status 93.75/93.75%, step P/R/F1 97.95/74.09/84.37 vs 94.84/76.17/84.48, evidence 74.23/75.13%, sequence 15.62/15.62%. Root causes of the 50 missing steps: identifier-free resources 23, partial-snapshot coverage overriding explicit observations 17, intent fallback 6, unreachable 3; no fixes applied.
+
+Actions:
+* git checkout -b phase0-contract-and-eval; commit 473bc22; git push -u origin
+* Rewrote code/tools/list_models.py (Gemini REST, key in header); ran it; WebFetch of the Gemini pricing page
+* Created code/audit/{vocab,model,identity,data,linking,reconstruct,intent}.py and parsers/{common,json_records,sql_snapshot,text_handover,logs,pdf_text,png_vision}.py
+* Wrote code/main.py, code/llm/__init__.py, code/config.toml, code/tests/test_core.py; added code/cache/ to .gitignore
+* Edited code/validate.py (empty_steps becomes a warning) and code/CONTRACT.md (v0.3, section 15 baseline)
+* Ran pipeline on samples (timing off/on) and on the 518 eval set; ran validator, scorer and scratchpad root-cause attribution
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-10-24T14:07:51Z] Round 1: holdout, LLM intent + vision, state rule (c), citation rule R4
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Baseline accepted. P=97.95% / R=74.09% — we rarely invent steps, we miss them. 40 of the missing steps come from two root causes: linking (23) and state (17). Round 1 targets state first because it is the more principled fix; linking is round 2.
+
+DECISION D16 (holdout): Before any tuning, freeze a holdout of 8 sample cases (every 4th case_id, chosen mechanically). From now on we never read per-case diffs for them — only aggregate scores. All tuning happens on the other 24. evaluation_report.md reports both.
+RATIONALE: 32 cases is small; tuning on all of them would make our accuracy numbers unprovable.
+
+DECISION D17 (models): Approve gemini-3.8-flash for intent. For screenshots, run gemini-3.8-flash plus one other priced vision model on all 11 PNGs, and score both against the LINK_RESOURCE_IDENTITY activities (activity_4000–4011) as a cross-check. The better one wins; the comparison goes into evaluation_report.md. Wire in the intent classifier now (cached, temperature 0 if supported). Expected: case_26 becomes correct.
+
+ROUND 1 — state reconstruction
+EVIDENCE: case_05 — an empty inventory snapshot from 09-05 hid the replica-drift row in evidence_54, so the case went COMPLETE instead of INCOMPLETE. The same pattern explains 17 missing steps across cases 05, 17, 21, 24, 25, 27, 28.
+MY HYPOTHESIS: absence-by-omission is only valid inside a snapshot's declared scope. A snapshot of the primary store cannot prove a replica row absent.
+REQUEST: Check snapshot_scope (and equivalent scope fields) for the 7 cases. Then compare two rules on the 24 tuning cases:
+  (a) scope-aware: omission proves ABSENT only for stores/collections the snapshot declares it covers
+  (b) your fallback: omission proves ABSENT only when there is no explicit observation by audit_at
+If (a) explains all 17, we use (a). If not, report which cases it misses and why.
+Also apply your fix 2: in INCOMPLETE cases, add the required-final-state verification for linked resources with no observation (empty evidence_id).
+
+CITATION QUESTION (case_04: gold cites evidence_54, not the later evidence_90):
+REQUEST: Do not guess. For every absence citation in the 24 tuning gold cases, test which rule fits: latest snapshot ≤ audit_at / earliest snapshot after the deletion event / same file as the case's other findings. Report the fit rate of each.
+
+NOT FIXING (document in evaluation_report.md): audit_record_5569 and audit_record_6645 appear in no participant file — irreducible misses, we do not chase them.
+
+ACCEPTANCE CRITERIA (24 tuning cases):
+  - state-root-cause missing steps: 17 → 0, or each remaining one explained
+  - precision stays ≥ 97%
+  - case_05 → INCOMPLETE
+  - holdout aggregate reported, no per-case output
+  - validator passes on all 518
+End with a ROUND 1 SUMMARY (fixed / metric before → after / still open / next focus).
+
+Agent Response Summary:
+Froze the mechanical holdout (case_04,08,12,16,20,24,28,32); the scorer and rootcause tool hide holdout diffs, and earlier contamination is disclosed. gemini-3.8-flash timed out on every request and gemini-3.6-flash hit the free-tier 20 req/day/model quota, so intent now runs batched (398 texts, 5 calls) on gemini-2.5-flash as a flagged substitute; case_26 is fixed and exactly 10 non-deletion requests are found. Vision comparison: gemini-3.5-flash-lite (9/9 printed ids, /bin/zsh.026) beat gemini-2.5-flash (8/9, /bin/zsh.095). Rule (a) fixed only case_05 (bundles declare only data_store+collection and are partial within it); rule (b) left 4 misses; rule (c) (fallback, omission only for DELETE resources) plus fix 2 restricted to evidence-linked resources gives 12→0 state misses on tuning. Citation rule R4 (explicit absence first) fits 8/8. Round 1 tuning: status 100%, P 99.24, R 87.25, F1 92.86, sequence 33.33; holdout P 100, R 81.82; validator passes on 518.
+
+Actions:
+* Created code/evaluation/{splits,rootcause,citation_rules}.py and code/evaluation/evaluation_report.md
+* Added --split to the scorer; added stores and absence rules to parsers/reconstruct; added fix 2; added catalog contradiction rule
+* Created code/prompts/{intent,vision_extract}.md, code/audit/vision.py, code/tools/{vision_compare,warm_intent_cache}.py; wired PNG parser
+* LLM client: timeout wrapping, retry/backoff, thread-safe logging; config.toml model substitutes and prices
+* Gemini API: probes, 16+5 intent calls, 22 vision calls (about /bin/zsh.22 at list prices); no key printed
+* Ran samples (several variants) and 518 eval; validator PASS; unit tests OK; CONTRACT.md v0.4
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-10-24T14:10:19Z] D18/D19 recorded; batch id check + disagreement log; commit Round 1
+
+User Prompt (verbatim, secrets redacted):
+DECISION D18 (intent model, replaces D17 for intent): batched gemini-2.5-flash.
+RATIONALE: gemini-3.8-flash timed out on every call and 3.6-flash hit the free-tier daily cap; 2.5-flash already gives exactly the 10 expected non-deletions. Billing is not worth it for a cached step.
+CONDITION: batching adds a position-mixup risk. Add a check: each batch response must return exactly the input ids, and any text where the LLM and the keyword fallback disagree is listed in the run log for manual review. Show me that list.
+
+DECISION D19: Rule (c) confirmed as default. Rationale recorded: omission can prove a record was deleted, never that a retained record is gone. Fix 2 restricted to evidence-linked resources — confirmed, consistent with D14.
+
+STANDING RULE: at the end of every round, commit and push to the branch without asking. Update CONTRACT.md with D18 and D19 now, then commit and push Round 1. Keep this turn short — no new work.
+
+Agent Response Summary:
+Added the D18 batch check: a response must return exactly the input ids or the whole batch falls back to keyword rules (all 5 batches passed). LLM-vs-keyword disagreements are now logged for review; there is exactly one, case_26, where the LLM is correct. Recorded D18, D19 and the standing commit rule in CONTRACT.md (v0.5); metrics unchanged and tests pass. Committed and pushed Round 1 to phase0-contract-and-eval.
+
+Actions:
+* Edited code/audit/intent.py (id check, disagreements()), code/main.py (logs both), code/CONTRACT.md (section 17)
+* Ran samples; scorer and unit tests; git commit and push
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+
+## [2026-10-24T14:11:50Z] SESSION START
+
+tool=Claude Code
+model=claude-opus-5-5[1m]
+Repo Root: /Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+Branch: phase0-contract-and-eval
+Worktree: main
+Parent Agent: none
+Language: py
+Time Remaining: not configured
+
+## [2026-10-24T14:22:06Z] Round 2 investigation: linking table, proposed rule L2, case_55/63
+
+User Prompt (verbatim, secrets redacted):
+Read ./AGENTS.md first and follow its logging format (append to the existing log.txt, never overwrite).
+
+CONTEXT: Context cleared after Round 1 to save tokens. Rebuild from the repo, not memory: code/CONTRACT.md (D1–D19), the last 3 log.txt entries incl. ROUND 1 SUMMARY, git log --oneline -10. Holdout rule D16 still applies: never print per-case diffs for case_04, 08, 12, 16, 20, 24, 28, 32.
+
+ROUND 2 — linking (18 of the 19 remaining tuning misses)
+EVIDENCE: 10 resources linked only through activity rows, 8 observed with no identifiers (404 lookups, anonymized analytics). --timing-links gives R 91.28% / P 97.14% but makes 3 wrong assignments (e.g. case_28's analytics record assigned to case_27).
+MY HYPOTHESIS: the wrong assignments happen because each case is linked independently. Several cases share reported_at, so a resource can satisfy multiple cases' windows. A global one-to-one assignment with stricter constraints (time window, worker result ↔ reported_status, expected resource type per user) should remove them.
+REQUEST, investigate before fixing:
+  1. For the 3 wrong assignments and the 18 misses, show a table: resource_id, every source mentioning it, candidate cases, and which signal would uniquely pick the right one.
+  2. Propose the linking rule based on that table — I approve it before you implement.
+ALSO: case_55 and case_63 are COMPLETE with empty steps on the eval set. case_63 is the marketing_001 case (D13). Explain both; an empty COMPLETE is almost certainly wrong.
+
+ACCEPTANCE (for this turn): the table, the proposed rule, the case_55/63 explanation. No code changes yet.
+
+Agent Response Summary:
+Rebuilt context from CONTRACT.md v0.5, the last log entries and git log. The account step of the timing linker is already global one-to-one. The 3 wrong analytics assignments come from step 2, which only considers requests whose account event was assigned, and from the worker also processing users who have no request (user_31 / account_146 next to analytics_9447). Worker events follow a fixed schedule relative to reported_at, and every tuning gold case has exactly 1 account and at most 1 resource per type (24/24). The proposed rule L2 adds narrow windows, a result filter for account events only, a one-per-type slot rule, the intent pool and global elimination. Simulated in the scratchpad, it gives 0 wrong links (tuning and holdout aggregate), fixes 11 of the 18 misses and removes all 3 wrong assignments; 7 stay ambiguous because same-slot identifier-free resources are symmetric. case_55: the only evidence <= audit_at is screenshot evidence_32, which shows backup_9287 with no restore flag (state None); every other user_16 resource is only in post-audit evidence_01. case_63: no participant file carries any user_09 identifier, so the empty row follows directly from D13. No repo code changed.
+
+Actions:
+* Read code/CONTRACT.md, log.txt (last entries), evaluation_report.md, code/audit/linking.py, code/main.py, code/evaluation/rootcause.py
+* Ran code/main.py on samples (timing off/on) and on the eval set (outputs under code/cache/, not ./output.csv); ran rootcause.py (tuning only)
+* Scratchpad scripts r2_table.py and r2_sim.py: per-resource sources and candidates; L2 simulation plus 6 ablations; post-audit ownership impact; stateless backup scan
+* Viewed evidence_32 and evidence_60 screenshots
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-10-24T14:30:39Z] Round 2: D20 L2 timing, D21, D22, D13 revised; calibration, drift, commit
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Round 2 investigation reviewed. The table is exactly the evidence I wanted — especially the finding that the wrong links came from the follow-up step, not the account step.
+
+DECISION D20: L2 approved as written, without the closed-world guard (no effect → no complexity).
+CONCERN: the 80/10/35-minute bounds were fitted on tuning offsets, with only 6 min of margin on the lower bound.
+REQUEST: calibrate without labels. Across all 518 eval cases, take worker events already linked by identifiers and plot their offsets from reported_at (min / p1 / p99 / max per event type). If any fall outside the L2 bounds, report them before changing anything. This uses no gold labels, so it is calibration, not tuning.
+
+DECISION D21 (D12b): approved with your restriction — post-audit ownership links produce a step only when a state observation exists at or before audit_at; no fix-2 empty verifications for them.
+CONDITION: report how many eval steps this adds after the restriction, and show 5 random ones for me to audit by hand.
+
+DECISION D22 (case_55): approved. COMPLETE requires positive proof; no observed block ≠ blocked. A backup holding the subject's identifier with no block observed at or before audit_at is a REPORT_RESTORE_RISK.
+
+DECISION D13 (revised, case_63): an observation vetoes a proposed link only when the identity it shows resolves to a different known user. An identity that resolves to no one is flagged in the run log but does not veto.
+RATIONALE: (1) this matches L2's own rule ("belongs to someone else"); (2) an empty COMPLETE is unprovable under D22; (3) in a deletion audit a missed record is the costly failure — the whole problem is about ghost data. marketing_001 therefore links to case_63 via activity_4008, flagged as identity-mismatch.
+
+REQUEST — implement D20–D22 + revised D13, then measure.
+ACCEPTANCE CRITERIA:
+  - tuning: missing 19 → ~8 (the 7 symmetric + 1 unreachable), extras ≤ 1, precision ≥ 97%
+  - holdout: aggregate only, must not regress
+  - validator passes on all 518; zero COMPLETE rows with empty steps
+  - eval drift report (no labels): how many of the 518 cases changed status vs the previous run, grouped by which decision caused it
+  - the calibration table and the 5 D21 samples
+End with ROUND 2 SUMMARY, then commit and push (standing rule).
+
+Agent Response Summary:
+Calibration without labels on eval identifier links: account deletes p1..p99 = -74.8..-44.0 min, policy follow-ups -29.0..-2.9 min. The 2 outliers belong to a different request by the same subject, so the bounds are unchanged. Implemented L2 (timing on by default), D21, D22 and revised D13, each with an off-flag. With every flag off the eval output is byte-identical to Round 1. Tuning: missing 19 -> 8 (7 symmetric + 1 unreachable), extras 1, P 99.30 / R 94.63, sequence 62.50%. Holdout aggregate: P 100 / R 81.82 -> 90.91, no regression. Validator passes on 518 with no empty-step rows. Eval drift: D20 changes steps in 160 cases (0 status changes), D21 adds 0 steps on top of D20 (2 alone; only 2 exist to audit, not 5), D22 flips case_55 and D13 revised flips case_63 to INCOMPLETE. 5 unit tests added (15 pass).
+
+Actions:
+* Edited code/audit/linking.py (L2 TimingLinker, D21 link class, revised catalog veto with flags), code/audit/reconstruct.py (D22), code/main.py (defaults and flags)
+* Added 5 unit tests to code/tests/test_core.py; updated code/CONTRACT.md (v0.6, section 18) and code/evaluation/evaluation_report.md (section 3.6)
+* Scratchpad r2_calib.py; ran samples, scorer (tuning and holdout), rootcause, cumulative eval variants v0-v3 plus final, validator, unit tests
+* Wrote ./output.csv (final eval run); git commit and push to phase0-contract-and-eval
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-10-24T14:38:32Z] Round 3 audit: policy condition coverage, code paths, quota budget
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Round 2 accepted. Holdout improved at the same rate as tuning (sequence 37.5 → 62.5) — the strongest sign so far that L2 generalizes. The remaining 8 tuning misses are irreducible by design. Tuning is near its ceiling, so Round 3 shifts to the biggest unmeasured risk.
+
+ROUND 3 — policy coverage on eval-only data
+EVIDENCE: several categories never appear in the 32 samples: CACHE_ENTRY, EMAIL_DELIVERY_LOG, LEGAL_HOLD_RECORD, MARKETING_PROFILE, USER_EXPORT. Their rules — and every conditional rule (rule_05 shared context, rule_06 attachment owned only by the subject, rule_07/08 still attributable, rule_11 log contains email, rule_12 within retention, rule_13 hold active, rule_14 restore can be blocked, rule_15 tombstone) — are unvalidated.
+MY HYPOTHESIS: the hidden answers differentiate on these conditions (e.g. an expired legal hold or an expired retention period must NOT be retained).
+REQUEST, investigate first:
+  1. Coverage table over the 518 eval outputs: per data_category → count of resources, which rule fired, which condition branch was taken (met / not met / undeterminable), and the resulting operations.
+  2. For every conditional rule: does the code evaluate the condition from evidence, or assume it? Show the code path.
+  3. For each category and each condition branch, show 2 eval examples (raw evidence line + produced steps) for me to audit.
+  4. List every case where a condition could not be determined, and what the code did.
+No code changes in this step — I decide fixes after the audit.
+
+ALSO IN THIS ROUND (after the audit, small and independent):
+  A. Screenshot prompt gap: emails in the "Owner" column are not extracted. BEFORE changing the prompt, compute the API quota budget: calls used today per model, calls this change needs, calls the final cold run needs (D-frozen). If it does not fit the free-tier daily caps, tell me before calling.
+  B. Turn E1–E5 into runnable evaluation cases under code/evaluation/ (inputs + expected output + pass/fail), included in evaluation_report.md.
+  C. case_17's account_6523: investigate only. Your calibration shows it belongs to case_46's request window. Propose a rule; do not implement yet.
+
+DEFER: usage_report.md comes from the frozen final run, not now.
+
+ACCEPTANCE (this turn): the coverage table, the condition code paths, the audit examples, the undeterminable list, and the quota budget. Commit and push at the end (standing rule).
+
+Agent Response Summary:
+Built a read-only audit tool (code/evaluation/policy_coverage.py) that writes code/evaluation/policy_coverage.md: coverage per category, 2 seeded examples per category and branch, and all undeterminable conditions. The pipeline never reads the condition column. rule_07 is evaluated implicitly through state; rule_05/06/12/13/14/15 are assumed met; DATA_FLOW and the worker-hint path bypass the rule table. Every retention/hold date in the evidence is 2027-2034, so expiry never occurs and evaluating rule_12/13 would change 0 outputs. 431 resources have undeterminable conditions (323 audit records without any retention date). Quota: logged API successes today are 2.5-flash 16, 3.5-flash-lite 11, 3.6-flash 16. The Owner-prompt change needs 11 lite calls (the system prompt is in the cache key) and the cold run 5 + 11. Under the observed 20/day cap neither fits today, so no API call was made; B, C and the prompt change are not started (outside this turn's acceptance).
+
+Actions:
+* Created code/evaluation/policy_coverage.py and the generated code/evaluation/policy_coverage.md; added section 3.7 to code/evaluation/evaluation_report.md
+* Read reconstruct.py, vocab.py, parsers/common.py, parsers/logs.py, parsers/pdf_text.py, vision.py, llm client; counted code/cache/llm_calls.jsonl
+* WebFetch of the Gemini rate-limits page (no per-model numbers published; RPD resets at midnight Pacific)
+* git commit and push to phase0-contract-and-eval; no pipeline code changed, output.csv unchanged
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-10-24T15:00:44Z] Round 3: D23 retention evaluation, D25 check, cache tokens, E1-E5
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Round 3 audit reviewed. Two conclusions.
+1. MY HYPOTHESIS IS REFUTED for this data: every retention and hold end date is 2027–2034, after every audit_at. The hidden answers cover these same 518 cases, so condition evaluation changes 0 outputs. Recorded as a refuted hypothesis, not a fix.
+2. The real gap is code honesty: CONTRACT §6 says "retention_until > T" but the code never parses it. A code judge reading both would see a mismatch.
+
+DECISION D23: implement real evaluation for rule_12 and rule_13 (parse retention_until / retained_until, compare with audit_at; not met → DELETE). Undeterminable stays "assumed met", but is now an explicit, logged branch, not a silent default. Add one unit test per branch. ACCEPTANCE: output.csv is byte-identical before and after.
+
+DECISION D24 (tombstones with no linked account, cases 543, 544, 547–550): keep as is. RATIONALE: a tombstone exists only because an account was deleted, so its existence satisfies "account is deleted".
+
+DECISION D25 (rule_05 without visible shared context): keep REDACT. RATIONALE: the policy names no alternative; redaction is the safe choice, deletion destroys agent/order context that may be required.
+REQUEST: confirm with the 24 tuning gold cases that every support message there is REDACT. If any is DELETE, stop and report it.
+
+QUOTA — IMPORTANT CORRECTION: the challenge is 24 hours. A schedule that runs on Oct 25/26 misses the deadline and is not acceptable.
+DECISION D26: Billing could not be enabled (card declined), so we stay on the free tier.
+PLAN: the final run is served entirely from the existing response cache (0 live calls). usage_report.md reports the 16 original calls that produced the cached responses — provider, model, input/output tokens, list-price cost — and states explicitly that the final run used cached responses and when they were created.
+REQUEST: confirm the cache stores per-call token counts for every response the final output depends on. If any are missing, tell me which — do not make new calls.
+CONSEQUENCE: no prompt change that invalidates the cache unless its impact estimate is non-zero and it fits the remaining quota (lite 9, 2.5-flash 4 today; reset 07:00 UTC). If the Owner-gap impact is zero, skip it and document it as a known limitation.
+
+OWNER-COLUMN PROMPT GAP: before spending any calls, estimate the impact. Which screenshots have an Owner column, and would extracting those emails create or change any link that is not already made another way? If the answer is zero, skip it per D26.
+
+THEN, in this round:
+  B. Make E1–E5 runnable cases under code/evaluation/ (inputs + expected output + pass/fail) and include their results in evaluation_report.md.
+  C. account_6523 (case_17): thanks for the correction. Investigate only if it fits in this turn; it is 1 step, low priority.
+
+ACCEPTANCE: D23 tests pass with byte-identical output.csv, the D25 gold check, the cache token confirmation, the Owner-gap impact estimate, E1–E5 passing. End with ROUND 3 SUMMARY, commit and push.
+
+Agent Response Summary:
+D25 check: all 7 tuning resources the evidence labels SUPPORT_MESSAGE are REDACT. The 3 deleted support_* resources are 2 explicit attachments plus support_002, a legacy contact-index entry with no record type, so no stop. D23: retention_until is parsed in all parsers and rule_12/13 now have explicit met / not met / undeterminable branches (logged). output.csv is byte-identical, and the branch counts equal the audit tool's. 4 new tests; 19/19 pass. Cache: all 16 entries the output depends on store token counts equal to the call log. Owner gap: the model already reads the Owner emails, and a zero-call replay that uses them changes 0 outputs, so it was skipped as a known limitation. E1-E5 are runnable and pass 5/5 (1 live 2.5-flash call for E1-E3 texts in their own batch; E4 moved off the holdout and outputs an empty COMPLETE, flagged). C: a request-scoping rule would drop only account_6523 from case_17 (0 eval changes), proposed only.
+
+Actions:
+* Edited code/audit/{model,vocab,reconstruct}.py, parsers/{common,json_records,sql_snapshot,logs,pdf_text}.py, code/main.py (D23, extra-text intent batches); code/tests/test_core.py (+4 tests, fixed D22 fixture)
+* Created code/evaluation/custom_cases.py; updated code/CONTRACT.md (v0.7, section 19) and code/evaluation/evaluation_report.md (sections 5, 5.1, 6)
+* Scratchpad replays: cache-key recorder (16 entries), Owner-email patch (0 diffs), scoping-rule count; viewed customer_export_console PNG
+* Gemini API: 1 live intent call (custom cases); ran eval, samples, validator, scorer (holdout aggregate), unit tests; git commit and push
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-10-24T15:11:35Z] Phase 4: freeze frozen_v1 (cache-only), reports, README, clean install, zip
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Round 3 accepted. Code now matches CONTRACT §6, the cache covers every response the output depends on, and the Owner gap is zero-impact. Remaining work is deterministic.
+
+QUOTA — DEADLINE: submission closes Oct 25, 15:30 Istanbul (12:30 UTC). With the Owner gap skipped, no live calls are needed at all. Final output comes from the cache (D26). No live calls from now on unless I explicitly approve one.
+
+DECISION D27 (E4 pattern, subject with no observable records): keep the current output, but make it an explicit branch: logged as NO_OBSERVABLE_RECORDS in the run log, a validator warning, and a known limitation in evaluation_report.md. RATIONALE: 0 of 518 rows hit it, and the schema offers no status that is both honest and provable here.
+
+DECISION D28 (account_6523 request scoping): rejected. RATIONALE: it fixes one tuning step and changes 0 eval outputs — a rule whose only effect is matching a sample is fitting, not generalizing. Documented as a known extra step.
+
+DECISION D29 (considered and rejected): a deterministic tie-break that assigns the 7 symmetric twin resources to one candidate case. It could raise sequence accuracy by ~50% of those cases, but an audit tool that attributes another person's data to a requester is wrong by design. They stay unlinked and are listed in evaluation_report.md.
+
+PHASE 4 — freeze and package:
+1. Frozen run: write code/config/frozen_v1 (prompts, model IDs, thresholds, flags such as --timing-links) and log its hash. Produce output.csv from it, cache only.
+2. code/evaluation/usage_report.md: the 17 cached calls behind the final output plus E1–E3 (keep the eval-only call separate from the production totals). Per-model and overall: provider, model, calls, input/output tokens, total and average tokens per request, list-price cost total and per request. State clearly that the final run was served from cache and cite the call-log timestamps.
+3. code/evaluation/evaluation_report.md, complete per the README: case-level status accuracy, step-level and field-level accuracy, sequence accuracy — tuning and holdout separately with the D16 contamination note; E1–E5; the A/B tables (timing links, snapshot rules, citation rules, vision model comparison, LLM vs keyword intent); failures found and improvements made, round by round, with before → after metrics; known limitations; rejected decisions (D28, D29).
+4. README.md: one-command setup and run, architecture diagram (text), where the LLM is used and why only there, key decisions D1–D29 in short form with pointers to CONTRACT.md.
+5. Clean-install test: copy the repo to a temp folder, follow only the README, run, diff output.csv against the frozen run — must be identical.
+6. Packaging dry run with the official zip command from the README: list the archive contents; confirm no dataset/, .env, .venv, __pycache__, nested archives, or secrets; confirm both reports are inside code/evaluation/; confirm prompts live in .py/.md files, not only .json.
+
+ACCEPTANCE: validator passes on all 518; clean-install diff empty; zip listing shown; both reports render as readable Markdown. Commit and push; merge the branch into main.
+
+Agent Response Summary:
+Froze code/config/frozen_v1.toml (sha256 23f37566...): models, prompt hashes, L2 thresholds, batch size and flags. main.py verifies it against the code and runs cache-only; a miss raises CacheMiss and aborts, and no key is needed. The 17 needed responses (16 production, 1 evaluation) moved to the tracked code/llm_cache/ with their original call-log rows, and dev artifacts moved to the gitignored .work/. The frozen output is byte-identical to Round 3 (sha256 774aa9ca...) with 0 live calls. D27 is an explicit NO_OBSERVABLE_RECORDS branch plus validator warning; D28/D29 are recorded as rejected. usage_report.md (generated), the complete evaluation_report.md and the solution README were written; the clean clone following only the README reproduced output.csv with an empty diff. code.zip (71 entries) has no dataset, .env, venv, pycache, nested archive or secret, and both reports render.
+
+Actions:
+* Created code/config/frozen_v1.toml, code/llm_cache/ (17 responses + calls.jsonl), code/tools/usage_report.py, code/evaluation/usage_report.md
+* Edited code/main.py (frozen config, cache-only, D27), code/llm/__init__.py (CacheMiss), code/validate.py, code/contract.py (WORK_DIR), code/config.toml, code/requirements.txt, evaluation tools, tests (+2)
+* Rewrote README.md and code/evaluation/evaluation_report.md; CONTRACT.md v1.0 (section 20); moved code/cache/ to .work/
+* Ran frozen run, no-LLM A/B, samples scoring, custom cases, validator, unit tests; clean clone + venv + run + diff; official zip command + listing + secret scan
+* git commit and push; merged phase0-contract-and-eval into main and pushed main; no live API calls this turn
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

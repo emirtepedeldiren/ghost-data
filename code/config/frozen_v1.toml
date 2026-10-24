@@ -1,0 +1,46 @@
+# frozen_v1: the configuration that produces the submitted output.csv (Phase 4, 2026-10-24).
+# `python3 code/main.py` loads this file by default, verifies it against the code (prompt hashes, thresholds) and
+# aborts on any mismatch. The run is cache-only (D26): every LLM response comes from code/llm_cache/, a cache miss
+# aborts the run, and no API key is needed. The sha256 of this file is printed and written to the run log.
+# Prompt text embedded in code (intent batch instruction, screenshot user prompt, JSON schemas) is part of every
+# cache key, so changing it causes a cache miss and aborts. It cannot silently change the output.
+
+[frozen]
+name = "frozen_v1"
+decisions = "D1-D29, see code/CONTRACT.md"
+
+[llm]
+provider = "gemini"
+cache_dir = "code/llm_cache"
+cache_only = true
+usage_log = ".work/llm_calls.jsonl"
+
+[llm.models]
+intent = "gemini-2.5-flash"         # D18: batched, 80 texts per call, temperature 0
+vision = "gemini-3.5-flash-lite"    # D17: won the screenshot comparison, temperature 0
+
+[prompts]
+intent = { path = "code/prompts/intent.md", sha256 = "8979ac713ffc8153a8e92d0db10d3150a4558d7ac88a9ade722b8b5485f961cf" }
+vision = { path = "code/prompts/vision_extract.md", sha256 = "826c80757f36441edf09d0da487a589fb97333744246f28305a511ce52f905c2" }
+
+[thresholds]
+# D20 (L2 timing linker), minutes relative to reported_at; calibrated without labels (evaluation_report.md §3.6).
+account_window_min = [-80, 10]
+followup_window_min = [-35, 0]
+intent_batch_size = 80
+
+[thresholds.result_ok]
+# D20: worker result accepted for an account DELETE event, per reported_status.
+COMPLETE = ["SUCCESS"]
+NOT_STARTED = ["FAILED"]
+PARTIALLY_COMPLETE = ["PARTIAL", "SUCCESS"]
+
+[pipeline]
+timing_links = true             # D20
+post_audit_links = true         # D12
+post_audit_unit_links = true    # D21
+unblocked_backup_rule = true    # D22
+strict_catalog_veto = false     # D13 revised
+absence_rule = "fallback_delete"  # D19, rule (c)
+verify_unobserved = true        # fix 2 (D19)
+use_llm = true                  # D1 / D2: intent and screenshots via cached LLM responses

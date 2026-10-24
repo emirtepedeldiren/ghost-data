@@ -11,6 +11,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATASET_DIR = REPO_ROOT / "dataset"
+WORK_DIR = REPO_ROOT / ".work"   # dev artifacts (run logs, decision logs, scratch predictions); gitignored, not packaged
 
 OUTPUT_HEADER = ["case_id", "deletion_status", "steps_json"]
 STATUSES = ("COMPLETE", "INCOMPLETE", "NOT_APPLICABLE")
