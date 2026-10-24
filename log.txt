@@ -904,3 +904,35 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-24T20:23:35Z] Round 7: unclaimed-data audit (label-free); no real misses found
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Other participants report output scores around 28/30. We cannot see ours, so we look for honest misses we can still find. One concrete lead: the Round 3 coverage table shows 0 resources for CACHE_ENTRY and EMAIL_DELIVERY_LOG, yet your Phase 0 inventory mentioned cache_ and email_delivery_ prefixes, and the new vision prompt lists both. An email delivery log contains a user email by definition, so 0 linked records suggests a parser or matching gap, not an absence of data.
+
+DECISION D33: the case-order artifact stays rejected (D29/D32). We do not reopen it.
+
+ROUND 7 — unclaimed-data audit (label-free; investigate first, no fixes)
+1. Every resource_id mentioned anywhere (all evidence files incl. PDF text and screenshot extractions, activity rows): count by prefix, and how many are linked to at least one case. Show prefixes with unlinked resources first.
+2. Specifically cache_, email_delivery_, and any SECONDARY_IDENTIFIER / PRODUCT_TELEMETRY records: where they appear (file, line), what identifiers they carry, and why they are not linked (parser drops them / category not mapped / identifier not matched / file after audit / genuinely nobody's).
+3. Identifier-format coverage: for every requester identifier (all current + historical emails, phones, hashes, user_ids, names), search every evidence file for variants our matcher may miss: phone without spaces, with dashes, without +country code, with 00 prefix; uppercase or differently encoded hashes; emails with +tags or different case inside JSON/SQL payloads; names without diacritics (Sofía/Sofia, Zieliński/Zielinski). Report every hit that is not already a link, with file and line.
+4. Classify each unlinked hit: real miss (would add steps) / correctly ignored (decoy, staff address, after audit, other person) / unsure.
+5. Estimate the impact: how many cases and steps would change if the real misses were linked.
+
+GUARDRAILS: no code changes this turn. output.csv stays 774aa9ca…. Do not use case_id order, list order or jitter as a signal.
+ACCEPTANCE: the prefix table, the cache/email_delivery explanation, the variant-match table, the classification, and the impact estimate. Commit and push log.txt.
+
+Agent Response Summary:
+cache_ (284) and email_delivery_ (368) ids occur only in background activity rows (REFRESH_CACHE, SEND_EMAIL) that carry no identifier, never in any evidence file, so they are genuinely nobody's resolvable data. No SECONDARY_IDENTIFIER or PRODUCT_TELEMETRY record exists ("telemetry" appears only in infrastructure log lines). Unlinked resources that appear in evidence: 307 belong to people without a request, 144 carry no identifier (incl. the D29 twins), and 45 belong to requesters. Of the 45: 28 are deliberate D21 drops (post-audit unit, no state at or before audit_at) and 20 hits fall in NOT_APPLICABLE cases. Variant scan (5,800 patterns over 547 requesters): no 00/bare phones, +tag or encoded emails, MD5/SHA-1 hashes or user-id variants; 186 hits already matched exactly; 4 unmatched "Mateo Rios" hits are a decoy (Mateo Rios Gil, different email and phone). Real misses: 0; impact 0 cases, 0 steps. No code changes; output.csv unchanged.
+
+Actions:
+* Scratchpad r7_audit.py, r7_owners.py, r7_classify.py, r7_variants.py (read-only; .work/r7_*.json); grep of evidence_54 and identities
+* git commit and push of log.txt only; fast-forward main
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
