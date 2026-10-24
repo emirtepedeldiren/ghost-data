@@ -1,4 +1,7 @@
-"""Loading of the participant-facing CSV files under dataset/."""
+"""Loading of the participant-facing CSV files under dataset/.
+
+Decisions: none of its own (plain loading; the audit_at time rule is applied downstream, CONTRACT.md §2).
+"""
 from __future__ import annotations
 
 import csv

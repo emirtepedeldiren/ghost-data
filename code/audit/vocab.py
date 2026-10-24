@@ -2,6 +2,8 @@
 
 Everything here is derived from participant-facing files (deletion_rules.csv categories,
 resource-id prefixes and system names that appear in the evidence). No case data.
+
+Decisions: D5 (prefix default categories), D9 (canonical systems), D23 (TIME_BOUND_RETAIN).
 """
 from __future__ import annotations
 

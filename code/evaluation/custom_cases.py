@@ -6,6 +6,8 @@ is hand-derived from participant data only. The pipeline runs unchanged on these
 Usage: python3 code/evaluation/custom_cases.py
 Intent: E1-E3 use new request texts. They were classified by the LLM once, in their own batch (main.py "extra texts"),
 so the dataset's cached batches are untouched; that response is in code/llm_cache/. Runs use the frozen config, cache-only.
+
+Decisions: the participant cases of CONTRACT.md §13; E4 moved off the holdout (D16); E4 exercises D27.
 """
 from __future__ import annotations
 

@@ -2,6 +2,8 @@
 
 Single source of truth for the CONTRACT.md §3 rules: header, statuses, the allowed
 (phase, operation, state) triples, their within-phase rank, and the step sort key.
+
+Decisions: D6 (operation order, then system_id, then resource_id), D7 (numeric case_id order), D8 (report paths).
 """
 from __future__ import annotations
 

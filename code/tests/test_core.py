@@ -1,4 +1,7 @@
-"""Unit tests for identity matching, parsing and ordering. Run: python3 -m unittest discover -s code/tests"""
+"""Unit tests for identity matching, parsing and ordering. Run: python3 -m unittest discover -s code/tests
+
+Decisions covered: S3 identity, D6/D7 ordering, D13, D20, D22, D23, D26 (cache-only), D31 (prompt leaks), and the no-hardcoded-answers compliance checks.
+"""
 from __future__ import annotations
 
 import sys
@@ -10,7 +13,7 @@ sys.path.insert(0, str(CODE))
 
 from audit import vocab  # noqa: E402
 from audit.identity import IdentityResolver, extract_identifiers, norm_email  # noqa: E402
-from audit.intent import TEMPORARY_FALLBACK_LABEL, keyword_intent  # noqa: E402
+from audit.intent import KEYWORD_FALLBACK_LABEL, keyword_intent  # noqa: E402
 from audit.parsers.logs import parse_line  # noqa: E402
 from contract import case_sort_key, step_sort_key  # noqa: E402
 
@@ -89,9 +92,9 @@ class Ordering(unittest.TestCase):
         self.assertEqual(got, ["analytics_2034", "support_864", "data_flow_9522", "account_4248", "search_052"])
 
 
-class TemporaryIntentFallback(unittest.TestCase):
+class KeywordIntentFallback(unittest.TestCase):
     def test_label_and_basic_negation(self):
-        self.assertIn("TEMPORARY", TEMPORARY_FALLBACK_LABEL)
+        self.assertEqual(keyword_intent("delete my account").source, KEYWORD_FALLBACK_LABEL)
         self.assertTrue(keyword_intent("Please permanently delete the account associated with this email address.").authorizes_deletion)
         self.assertFalse(keyword_intent("Please remove me from marketing lists only. I still want receipts.").authorizes_deletion)
         self.assertFalse(keyword_intent("I still use it, so please don't delete or change anything.").authorizes_deletion)

@@ -28,6 +28,8 @@ no prediction is scored as status "<missing>" with no steps.
                     concordance over all pairs of matched steps, and the share of cases (with >= 2
                     matched steps) whose matched steps appear in exactly the gold order. Separates
                     ordering errors from discovery errors.
+
+Decisions: metrics of CONTRACT.md §12; D16 split handling (holdout diffs never printed).
 """
 from __future__ import annotations
 

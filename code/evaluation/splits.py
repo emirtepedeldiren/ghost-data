@@ -2,6 +2,8 @@
 
 Holdout = every 4th sample case in numeric case_id order (positions 4, 8, ..., 32).
 Rule: per-case diffs of holdout cases are never printed or inspected; only aggregate scores.
+
+Decisions: D16.
 """
 from __future__ import annotations
 

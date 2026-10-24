@@ -2,6 +2,8 @@
 
 Every extracted id is checked against the expected pattern; values that do not match are kept in the
 extraction log as `unparsed` and never used (never guessed).
+
+Decisions: D2, D17, D31 (prompt read from the config's [prompts] entry).
 """
 from __future__ import annotations
 

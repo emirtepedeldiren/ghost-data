@@ -7,6 +7,8 @@ Three layouts exist in the dataset:
   * typed pairs - customer_profiles_primary / customer_profiles_failover_replica, search_documents_primary
 Every row in any table (primary or replica) is an observation, so a row that survives only in a replica
 is still reported (replica drift). Each covered collection is also a Coverage snapshot.
+
+Decisions: each table is its own store (replica drift, CONTRACT.md §6), D19 (coverage), D23 (retention end dates).
 """
 from __future__ import annotations
 

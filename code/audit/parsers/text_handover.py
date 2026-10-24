@@ -1,4 +1,7 @@
-"""Plain-text handover records: `- <time> | <system> | <resource_id> | <CATEGORY> | <RESULT> | <subject>`."""
+"""Plain-text handover records: `- <time> | <system> | <resource_id> | <CATEGORY> | <RESULT> | <subject>`.
+
+Decisions: D9 (system as named in the line); explicit category and result columns.
+"""
 from __future__ import annotations
 
 import re

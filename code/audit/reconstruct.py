@@ -1,6 +1,8 @@
 """State at audit_at (CONTRACT.md §6), category resolution (D5) and policy -> steps (§7.2).
 
 State and citations come only from evidence files captured <= audit_at (D11 revised, D4).
+
+Decisions: D4, D5, D11, D19 (absence rule (c) and fix 2), D22, D23, D27 (empty result handled by the caller).
 """
 from __future__ import annotations
 

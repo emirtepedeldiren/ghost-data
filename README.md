@@ -1,127 +1,90 @@
 # Ghost Data Still Exists: deletion-audit agent
 
-HackerRank Orchestrate, October 2026. For each request in `dataset/deletion_requests.csv`, the agent decides whether the person
-asked for deletion. If they did, it collects the person's current identifiers and every historical value in the identity audit log,
-reconstructs the state of each linked
-record at `audit_at` from the evidence, applies `deletion_rules.csv`, and writes the findings, ordered remediation and
-verification steps to `output.csv` (`case_id,deletion_status,steps_json`).
-The full challenge contract is in [`problem_statement.md`](./problem_statement.md).
+For each request in `dataset/deletion_requests.csv`, the agent decides whether the person asked for deletion, finds their
+current and historical identifiers, reconstructs the state of every linked record at `audit_at` from the evidence, applies
+`deletion_rules.csv`, and writes findings, ordered remediation and verification steps to `output.csv`.
 
-## Quick start (one command)
+## Quickstart
 
-Requirements: Python 3.11+ (tested with 3.13) and the participant `dataset/` folder at the repository root.
+Python 3.11+ (tested on CPython 3.13.12), with the participant `dataset/` folder at the repository root. No API key is needed.
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r code/requirements.txt && .venv/bin/python code/main.py
+python3 -m venv .venv && .venv/bin/pip install -r code/requirements.txt     # setup (one dependency: pypdf)
+.venv/bin/python code/main.py                                               # run: writes ./output.csv (518 rows)
+.venv/bin/python -m unittest discover -s code/tests                         # test (identity, parsers, ordering, policy, compliance)
+.venv/bin/python code/validate.py --output output.csv                       # validate the output contract
+.venv/bin/python code/main.py --requests dataset/sample_deletion_requests.csv --output .work/samples.csv \
+  && .venv/bin/python code/evaluation/main.py --pred .work/samples.csv --split tuning   # evaluate on the samples (or --split holdout / all)
+.venv/bin/python code/evaluation/custom_cases.py                            # participant evaluation cases E1-E5
 ```
 
-This writes `output.csv` (518 rows) at the repository root. **No API key and no network are needed.** The run uses the frozen
-configuration `code/config/frozen_v1.toml` and reads every LLM response from the committed cache `code/llm_cache/` (cache-only:
-a cache miss aborts the run instead of calling the API). The run prints the config sha256 and writes a run log and a per-case
-decision log to `.work/runs/latest/`.
-
-Windows (PowerShell): `py -m venv .venv; .venv\Scripts\pip install -r code\requirements.txt; .venv\Scripts\python code\main.py`
-
-Expected result: config sha256 `1f39d309dbb8d6611cd987feb0c577b3417642c005b615fbfbbeef91242ca612`, `output.csv` sha256
-`774aa9ca3e0073383fc9251ce17217b684c4b06161c5385c712945a420d1cb1f`.
-
-### Other commands
-| Purpose | Command |
-|---|---|
-| Validate the output (structure, ordering, evidence rules, cutoff) | `.venv/bin/python code/validate.py --output output.csv` |
-| Score the 32 samples (tuning / holdout split) | `.venv/bin/python code/main.py --requests dataset/sample_deletion_requests.csv --output .work/samples.csv` then `.venv/bin/python code/evaluation/main.py --pred .work/samples.csv --split tuning` (or `holdout`, `all`) |
-| Participant evaluation cases E1–E5 | `.venv/bin/python code/evaluation/custom_cases.py` |
-| Unit tests | `.venv/bin/python -m unittest discover -s code/tests` |
-| Policy-condition coverage audit | `.venv/bin/python code/evaluation/policy_coverage.py --run latest` |
-| Regenerate the usage report | `.venv/bin/python code/tools/usage_report.py` |
-| Check prompts for dataset ids (D31) | `.venv/bin/python code/tools/prompt_leaks.py` |
-| One-time D31 screenshot refresh (live calls; dry run: `--mock identical` / `--mock different` in a copy of the repo) | `.venv/bin/python code/tools/refresh_vision.py` |
-| Switch one decision off for measurement | e.g. `--no-timing-links`, `--no-unblocked-backup-rule`, `--strict-catalog-veto` (the run log records the deviation) |
-| Live LLM calls for new data (development only) | put `GEMINI_API_KEY=...` in an uncommitted `.env`, then add `--live` |
+The run uses the frozen configuration `code/config/frozen_v1.toml` and is **cache-only**: every LLM response comes from the
+committed cache `code/llm_cache/`, and a cache miss aborts the run instead of calling the API. Expected result: config sha256
+`1f39d309dbb8d6611cd987feb0c577b3417642c005b615fbfbbeef91242ca612`, `output.csv` sha256
+`774aa9ca3e0073383fc9251ce17217b684c4b06161c5385c712945a420d1cb1f`. Run and decision logs go to `.work/runs/<name>/`.
+Windows: use `.venv\Scripts\python` in place of `.venv/bin/python`. Lint: `pip install -r code/requirements-dev.txt && ruff check code`.
 
 ## Architecture
 
 ```
-dataset/*.csv ──► S1 load ──► S2 intent ─────────────── LLM (cached): does the text authorize deletion?
-                               │ NOT_APPLICABLE → []
-                               ▼
-                  S3 identity: current + historical emails / phones / hashes / user_id (full user_audit_log history; ids link, never set state)
-                               │
-dataset/evidence/ ──► S4 extract: one Observation schema from every format
-   .sql (sqlite3) .json .log (6 dialects, trace joins) .txt .pdf (text layer)
-   .png ─────────────────────── LLM (cached): screenshot → structured records, ids validated
-                               │
-                               ▼
-                  S5 link: identifier co-occurrence (≤ audit_at; post-audit files for ownership only),
-                           catalog claims (vetoed by a conflicting known identity),
-                           worker-schedule timing rule L2 (global, unique assignments only)
-                               │
-                               ▼
-                  S6 state at audit_at: latest observation ≤ audit_at; snapshot omission proves ABSENT only
-                           for DELETE-policy records with no explicit observation; replicas are separate stores
-                               │
-                               ▼
-                  S7 policy: deletion_rules.csv per category (retention/hold conditions evaluated)
-                               │
-                               ▼
-                  S8 steps: FINDING → REMEDIATION → VERIFICATION, contract ordering, citations ≤ audit_at
-                               │
-                               ▼
-                  S9 output.csv  ──►  S10 validator
+dataset/*.csv ──► S1 load ──► S2 intent (LLM, cached) ── does the text authorize deletion? no → NOT_APPLICABLE, []
+                                   │ yes
+                                   ▼
+                  S3 identity: current + historical emails / phones / hashes / user_id (user_audit_log)
+                                   │
+dataset/evidence/ ──► S4 extract: one Observation schema from .sql (sqlite3), .json, .log (6 dialects), .txt, .pdf (text layer)
+                                  and .png (LLM transcription, cached, ids validated)
+                                   │
+                                   ▼
+                  S5 link: identifiers in the same evidence unit; post-audit files for ownership only; catalog claims
+                           (vetoed by a conflicting known identity); worker-schedule rule L2 (unique assignments only)
+                                   │
+                                   ▼
+                  S6 state at audit_at: latest observation captured <= audit_at; omission proves ABSENT only for
+                           DELETE-policy records without an explicit observation; replica tables are separate stores
+                                   │
+                                   ▼
+                  S7 policy (deletion_rules.csv; retention / hold end dates evaluated) ──► S8 ordered steps ──► S9 output.csv ──► S10 validator
 ```
 
-Code: `code/main.py` (entry point and pipeline), `code/audit/` (identity, parsers, linking, state, policy and steps),
-`code/llm/` (provider-agnostic client with disk cache and call log), `code/contract.py` (output contract and ordering),
-`code/validate.py`, `code/evaluation/` (scorer, splits, root-cause and coverage tools, custom cases, reports).
-The full specification is `code/CONTRACT.md`.
+Principle: workflow statuses and activity rows are **claims**. They may propose a link, but state and citations come only from
+evidence files captured at or before `audit_at`.
+
+## Where to look
+
+Full decision records are in `code/CONTRACT.md` (§14–§20); measurements are in `code/evaluation/evaluation_report.md`.
+
+| Decision | What it does | Where (file:function) |
+|---|---|---|
+| D1, D18 | LLM intent classification, batched, exact-id check, keyword fallback only on API failure | `code/audit/intent.py:IntentClassifier.prepare`, `.classify` |
+| D2, D17, D31 | Screenshots transcribed once by a vision model; ids validated; neutral prompt | `code/audit/vision.py:extract`, `code/prompts/vision_extract.md` |
+| S3 | Current + historical identity, token-boundary matching, case-insensitive emails | `code/audit/identity.py:IdentityResolver.resolve` |
+| D11 | Claims vs evidence: activity rows propose links, only files set state | `code/audit/linking.py:catalog_links`, `code/audit/reconstruct.py:StateIndex._state` |
+| D12, D21 | Files captured after audit_at decide ownership, never state | `code/audit/linking.py:explicit_links`, `code/main.py:run` |
+| D13 | Catalog link vetoed only by an identity that resolves to another known user | `code/audit/linking.py:catalog_links` |
+| D20 | Rule L2: worker-schedule windows, one resource per type, global unique assignment | `code/audit/linking.py:TimingLinker` |
+| D4, D19 | Latest observation <= audit_at; omission proves absence only for DELETE-policy records; fix 2 | `code/audit/reconstruct.py:StateIndex._state`, `build_steps` |
+| D5, D9 | Category: explicit evidence, then the worker's operation, then the prefix default; system as named | `code/audit/reconstruct.py:StateIndex.category`, `code/audit/vocab.py:system_for` |
+| D22 | A backup holding the subject's data with no observed block is a restore risk | `code/audit/reconstruct.py:StateIndex._state` |
+| D23 | Retention / legal-hold end dates evaluated; undeterminable is logged | `code/audit/reconstruct.py:StateIndex.retention_condition` |
+| D6, D7 | Phase → operation → system_id → resource_id ordering; rows in case_id order | `code/contract.py:step_sort_key`, `case_sort_key` |
+| D26 | Frozen, cache-only run; config verified against the code | `code/main.py:load_frozen`, `code/llm/__init__.py:LLMClient.generate` |
+| D27 | Subject with no observable record: explicit NO_OBSERVABLE_RECORDS branch | `code/main.py:run`, `code/validate.py:check_steps` |
+| D16 | Mechanical holdout (every 4th sample), aggregates only | `code/evaluation/splits.py:holdout_ids` |
+| D28, D29, D32 | Rejected: fitting one sample step; tie-breaking twins; record order as a signal (tested) | `evaluation_report.md` §8–§9 |
+| Compliance | No hardcoded ids, gold never read, every input read, prompts free of dataset ids | `code/tests/test_core.py:NoHardcodedAnswers`, `PromptLeaks` |
 
 ## Where the LLM is used, and why only there
 
-The model provider is Google Gemini, with model IDs in config only. It is used in exactly two places:
+Provider: Google Gemini (model IDs in config only). The LLM is used in exactly two places:
 1. **Intent (S2), `gemini-2.5-flash`.** Request texts are free text in several languages, with negations, partial scopes and
-   correction or export requests. The 398 unique texts are classified in 5 deterministic batches. A batch whose answer does not
-   contain exactly its input ids is rejected (D18). Prompt: `code/prompts/intent.md`.
-2. **Screenshots (S4), `gemini-3.5-flash-lite`.** 11 PNG application screens are transcribed into records once. Every
-   extracted id is validated against strict patterns. Prompt: `code/prompts/vision_extract.md`.
+   access or export requests: that is reading comprehension, not a rule. The 398 unique texts go in 5 deterministic batches.
+2. **Screenshots (S4), `gemini-3.5-flash-lite`.** 11 application screens must be read from pixels. Each is transcribed once,
+   and every extracted id is validated against strict patterns.
 
-Everything else (identity, parsing, linking, state, policy, ordering) is deterministic code. Those steps need exact, auditable
-rules and an evidence trail per step, not judgement calls. Responses are cached on disk with token counts, and the final
-run is served from that cache (`code/evaluation/usage_report.md`).
-
-## Key decisions (details in `code/CONTRACT.md`)
-
-| # | Decision |
-|---|---|
-| D1 | Intent via an LLM classifier, temperature 0, cached; keyword rules only as a logged fallback |
-| D2 | Screenshots via a vision model, extracted once, cached, ids validated |
-| D3 | No explicit join exists for identifier-free resources; timing linking had to be earned with data (see D20) |
-| D4 | Cite the latest evidence file captured ≤ audit_at that observes the claimed state |
-| D5 | Category: explicit evidence first, then the worker's attempted operation, then the prefix default |
-| D6, D7 | Strict operation order, then system_id, then resource_id; rows in numeric case_id order |
-| D8 | Reports in `code/evaluation/` (bundled by the official zip command) |
-| D9 | system_id as named in the evidence record; prefix map only as fallback |
-| D10 | Provider-agnostic client; provider Gemini; keys only from the environment / `.env` |
-| D11 | An activity row may *propose* a link; state and citations come only from evidence files |
-| D12 | Files captured after audit_at may decide ownership, never state or citation |
-| D13 | A catalog link is vetoed only when an observation shows an identity of a different known user |
-| D14 | Activity-only proposals with no observation produce no step |
-| D15 | The timing linker is an ordinary link source, defaulted by data |
-| D16 | Mechanical holdout (every 4th sample); tuning on 24 cases only; contamination disclosed |
-| D17 | Screenshot model chosen by comparison (`gemini-3.5-flash-lite`) |
-| D18 | Intent on batched `gemini-2.5-flash` with an exact-id check; disagreements with the keyword rules logged |
-| D19 | Absence rule (c): omission proves deletion only for DELETE-policy records; fix 2 verifications for evidence-linked resources |
-| D20 | Linking rule L2: worker-schedule windows, account result filter, one resource per type, global unique assignment |
-| D21 | Ownership from post-audit units; a step needs a state observation ≤ audit_at |
-| D22 | A backup holding the subject's data with no observed block is a restore risk |
-| D23 | Retention / legal-hold conditions evaluated from the stated end date; undeterminable is logged |
-| D24 | A tombstone's existence satisfies "account is deleted" |
-| D25 | Support messages without visible shared context stay REDACT |
-| D26 | Free tier: the final run is cache-only, with 0 live calls |
-| D27 | A subject with no observable record is an explicit `NO_OBSERVABLE_RECORDS` branch and a validator warning |
-| D28 | Rejected: request scoping that would only fix one sample step |
-| D29 | Rejected: tie-breaking interchangeable resources between requests (it would attribute another person's data) |
-| D30 | Absence by omission from replica tables only is kept, documented as a known limitation |
-| D31 | Prompts contain no dataset id or email; the screenshot responses are re-extracted with the neutral prompt (`code/tools/refresh_vision.py`) |
+Everything else (identity, parsing, linking, state, policy, ordering) is deterministic code: those steps need exact, auditable
+rules and an evidence trail per step, not judgement. The final run makes 0 live calls; tokens and cost are in
+`code/evaluation/usage_report.md`.
 
 ## Results
 
@@ -130,18 +93,42 @@ run is served from that cache (`code/evaluation/usage_report.md`).
 | Tuning (24 samples) | 100.00% | 62.50% | 99.30 / 94.63 / 96.91% | 94.00% | 100% | 62.50% |
 | Holdout (8 samples) | 100.00% | 62.50% | 100.00 / 90.91 / 95.24% | 90.91% | 100% | 62.50% |
 
-The eval set (518 rows) passes the validator with 0 errors and 0 warnings. Details, A/B comparisons, failures and fixes round by round,
-known limitations and rejected decisions: `code/evaluation/evaluation_report.md`. Tokens and cost: `code/evaluation/usage_report.md`.
+On the 518 eval requests (no labels), the validator passes with 0 errors and 0 warnings, and for 165 of the 254 requests the
+workflow reported COMPLETE, the audit finds personal data or a recreation path still present. Details, A/B comparisons and
+round-by-round improvements: `code/evaluation/evaluation_report.md`.
 
-## Packaging
+## Known limitations
 
-From the repository root (the official command; it bundles `README.md` and `code/`, not `dataset/` or `.work/`):
+- **Interchangeable twin records.** Identifier-free records of requests that share a worker slot are left unlinked (D29). An
+  investigation found no person-level field that separates them, and record order is not a signal (D32).
+- **Weak absence proofs.** Absence by omission from replica tables only (64 eval accounts) is kept but unconfirmed (D30).
+- **Assumed conditions.** Policy conditions that the evidence does not state (no retention date, no shared-context marker) are
+  assumed met and logged (D23–D25).
+- **Fixed cache.** The frozen run serves only this dataset's cached LLM responses; new data needs `--live` and a key in `.env`.
+<!-- D31:readme -->
+- **Screenshot prompt refresh pending.** The cached screenshot responses were produced by a superseded prompt kept in
+  `code/prompts/legacy/`; `code/tools/refresh_vision.py` (D31) re-extracts them with the neutral prompt.
+<!-- /D31:readme -->
 
-```bash
-zip -r code.zip README.md code -x "*/__pycache__/*" "*/.venv/*" "*/venv/*" "*/node_modules/*" "*/.git/*" "*/.DS_Store"
+Full list: `code/evaluation/evaluation_report.md` §8.
+
+## Repository layout
+
+```
+README.md                 this file
+code/main.py              entry point and pipeline (S1-S9)
+code/audit/               identity, intent, evidence parsers, linking, state reconstruction, policy and steps
+code/llm/                 provider-agnostic LLM client with disk cache, call log and cache-only mode
+code/prompts/             intent and screenshot prompts (Markdown; hashes pinned in the frozen config)
+code/config/              frozen_v1.toml: models, prompt hashes, thresholds, flags of the submitted run
+code/llm_cache/           cached LLM responses the outputs depend on, with the original call records
+code/contract.py          output contract and ordering; code/validate.py checks it
+code/evaluation/          scorer, holdout split, analysis tools, custom cases, evaluation_report.md, usage_report.md
+code/tools/               usage_report.py, prompt_leaks.py, refresh_vision.py; dev/ holds development-only tools
+code/tests/               unit and compliance tests
+code/CONTRACT.md          specification and decision record (D1-D32)
 ```
 
-Windows (PowerShell): `Compress-Archive -Path README.md, code -DestinationPath code.zip -Force` (remove `code\__pycache__` folders first).
-
-Submission items: `code.zip`, the root `output.csv`, and `log.txt` (the agent session transcript, written per `AGENTS.md`).
+Packaging (official command): `zip -r code.zip README.md code -x "*/__pycache__/*" "*/.venv/*" "*/venv/*" "*/node_modules/*" "*/.git/*" "*/.DS_Store"`.
+Submission: `code.zip`, the root `output.csv`, and `log.txt` (agent transcript, per `AGENTS.md`).
 Challenge page: https://wwww.hackerrank.com/contests/hackerrank-orchestrate-october26/challenges/ghost-data-still-exists

@@ -1,4 +1,7 @@
-"""Evidence parsing: dispatch every manifest entry to its format parser and build one EvidenceIndex."""
+"""Evidence parsing: dispatch every manifest entry to its format parser and build one EvidenceIndex.
+
+Decisions: S4 dispatch; screenshots via D2; every parser returns the same ParseResult.
+"""
 from __future__ import annotations
 
 from pathlib import Path

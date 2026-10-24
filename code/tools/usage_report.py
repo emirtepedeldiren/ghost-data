@@ -4,6 +4,8 @@ Usage: python3 code/tools/usage_report.py
 The frozen run is served from cache (D26), so its usage is the usage of the original API calls that produced the
 cached responses. Each row of calls.jsonl is one original call, matched to its cache entry (cache_key), with the
 call-log timestamp and the token counts the provider returned.
+
+Decisions: D26 (final run served from cache; usage = the original calls).
 """
 from __future__ import annotations
 
@@ -21,6 +23,9 @@ N_REQUESTS = sum(1 for _ in (DATASET_DIR / "deletion_requests.csv").open(encodin
 
 
 def main() -> int:
+    """Write usage_report.md: production calls (behind output.csv), the evaluation-only call, each original call,
+    and total project spend including development calls, all at the list prices in code/config.toml.
+    """
     calls = [json.loads(line) for line in (CODE / "llm_cache" / "calls.jsonl").open(encoding="utf-8")]
     dev = [json.loads(line) for line in (CODE / "llm_cache" / "dev_calls.jsonl").open(encoding="utf-8")]
     prices = tomllib.loads((CODE / "config.toml").read_text(encoding="utf-8"))["llm"]["prices"]

@@ -6,6 +6,8 @@ for each task come from code/config.toml. Every call is cached on disk and logge
 
 Cache-only mode (D26, frozen runs): a cache miss raises CacheMiss and aborts the run instead of calling the API,
 so the frozen output can never silently depend on a new live call or on a keyword fallback.
+
+Decisions: D10 (provider-agnostic, keys from the environment only), D26 (cache-only frozen runs), D31 (prompt paths from the config).
 """
 from __future__ import annotations
 

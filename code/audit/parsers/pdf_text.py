@@ -2,6 +2,8 @@
 
 A document is one unit. Each resource id printed in it is observed as present in the system that
 owns the document (manifest `origin`), with the identifiers printed in the same document.
+
+Decisions: no LLM for PDFs (text layer only); D23 ('retain until' dates).
 """
 from __future__ import annotations
 

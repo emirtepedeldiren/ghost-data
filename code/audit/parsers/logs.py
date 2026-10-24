@@ -9,6 +9,8 @@ Dialects (all observed in dataset/evidence/logs):
   pipe     2026-..Z | LEVEL | service | trace | event | k="v" ...
 Lines sharing a trace id form one unit (a lookup_started line carries the key, the completed line
 carries the resource and the result). Lines without a trace id are units on their own.
+
+Decisions: trace-group units (CONTRACT.md §4 S4), D12 (line timestamps), D23 (retention end dates).
 """
 from __future__ import annotations
 

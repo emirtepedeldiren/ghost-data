@@ -5,6 +5,8 @@ For every resource in the final run's decision log it reports the data category,
 shows it (met / not met / undeterminable / n/a), and the operations written to output.csv.
 
 Usage: python3 code/evaluation/policy_coverage.py [--run final] [--pred output.csv] [--md code/evaluation/policy_coverage.md]
+
+Decisions: the Round 3 audit behind D23, D24 and D25.
 """
 from __future__ import annotations
 
@@ -159,6 +161,9 @@ def condition(category: str | None, res: dict, units: list[dict], audit_at: str,
 
 
 def main() -> int:
+    """Write policy_coverage.md: per-category coverage table (rule fired, condition branch, operations),
+    2 seeded audit examples per category and branch, and the list of undeterminable conditions.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", default="latest")
     ap.add_argument("--pred", type=Path, default=REPO_ROOT / "output.csv")

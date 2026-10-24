@@ -5,6 +5,8 @@ Usage:
 
 Exit code 0 when every check passes, 1 otherwise. Problems are grouped by check and
 each group lists at most --max-examples offending cases.
+
+Decisions: D6/D7 ordering checks, the evidence time rule (CONTRACT.md §2), invariant 6, D27 (NO_OBSERVABLE_RECORDS warning).
 """
 from __future__ import annotations
 
@@ -49,6 +51,13 @@ def load_evidence_times(dataset_dir: Path) -> dict[str, str]:
 
 def check_steps(case_id: str, status: str, steps: list, audit_at: str | None,
                 evidence_times: dict[str, str], problems: dict[str, list[str]]) -> None:
+    """Check one row's steps against the output contract; problems are appended to `problems` by check name.
+
+    Steps: NOT_APPLICABLE must be empty; COMPLETE/INCOMPLETE with no steps is the D27 warning; per step: exact keys,
+    consecutive step_no, allowed (phase, operation, state), evidence rules per status, cited id known and captured
+    <= audit_at; per row: INCOMPLETE has a finding, contract ordering (D6), no duplicates, invariant 6
+    (remediation needs a finding and a verification on the same resource).
+    """
     def bad(check: str, msg: str) -> None:
         problems[check].append(f"{case_id}: {msg}")
 

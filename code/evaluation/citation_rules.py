@@ -9,6 +9,8 @@ from a snapshot of the same system and category), then test three rules:
   R4 explicit_first: the latest file with an explicit absence observation (NOT_FOUND / 404 / rows=0);
                      only if none exists, the latest snapshot that omits the resource (matches absence rule (c))
 Usage: python3 code/evaluation/citation_rules.py
+
+Decisions: evidence for D4 (citation rule R4, 8/8 on the tuning gold).
 """
 from __future__ import annotations
 

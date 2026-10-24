@@ -16,6 +16,8 @@ Options (each flag switches one approved decision off, for measurement; the run 
 
 Pipeline (CONTRACT.md §4): intent -> identity -> evidence index -> linking -> state at audit_at ->
 policy -> steps (code/contract.py ordering) -> CSV.
+
+Decisions: wires D1–D27; the frozen config pins D20–D23 and D26; D27 logs NO_OBSERVABLE_RECORDS.
 """
 from __future__ import annotations
 
@@ -47,6 +49,17 @@ def run(requests_path: Path, output_path: Path, dataset_dir: Path, timing_links:
         use_llm: bool = True, post_audit_unit_links: bool = True, unblocked_backup_rule: bool = True,
         strict_catalog_veto: bool = False, llm_config: Path = CONFIG_PATH, cache_only: bool | None = None,
         header: tuple[str, ...] = ()) -> dict:
+    """Audit every request in `requests_path` and write the output CSV, a run log and a per-case decision log.
+
+    Steps:
+      1. Load the dataset, resolve identities, build the evidence index (all formats; screenshots via the cached LLM).
+      2. Classify intent for all request texts in deterministic batches (D1, D18); extra texts get their own batches.
+      3. Build the L2 timing linker over all request rows (D20).
+      4. Per request: NOT_APPLICABLE if the text does not authorize deletion; otherwise resolve the subject, collect
+         identifier, post-audit (D12, D21), catalog (D13) and timing links, resolve each resource's state at audit_at
+         (D19, D22, D23), and build the ordered steps (D6). An empty result is logged as NO_OBSERVABLE_RECORDS (D27).
+      5. Sort rows by case_id (D7), write the CSV, the run log and decisions.jsonl. Returns run statistics.
+    """
     run_dir.mkdir(parents=True, exist_ok=True)
     log_lines: list[str] = list(header)
 
@@ -80,7 +93,7 @@ def run(requests_path: Path, output_path: Path, dataset_dir: Path, timing_links:
             log(f"extra texts: {line}")
     for line in classifier.disagreements(ds.all_requests()):
         log(line)
-    log(f"intent: {'LLM ' + classifier.client.models['intent'] + ' (cached)' if use_llm else intent_mod.TEMPORARY_FALLBACK_LABEL}")
+    log(f"intent: {'LLM ' + classifier.client.models['intent'] + ' (cached)' if use_llm else intent_mod.KEYWORD_FALLBACK_LABEL}")
     timing = (TimingLinker(ds.all_requests(), ds.activity, ownership, resolver,
                            lambda text: classifier.classify(text).authorizes_deletion) if timing_links else None)
     for p in index.pending:

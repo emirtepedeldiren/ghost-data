@@ -1,4 +1,7 @@
-"""Normalized records shared by parsers, linking, state reconstruction and policy."""
+"""Normalized records shared by parsers, linking, state reconstruction and policy.
+
+Decisions: the Observation schema of CONTRACT.md §5; retention_until carries the stated end date for D23.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -1,8 +1,11 @@
 # CONTRACT.md — Ghost Data Still Exists deletion-audit agent
 
 Status: **v1.0, frozen** (2026-10-24, Phase 4: `code/config/frozen_v1.toml`). Built: `code/contract.py`, `code/validate.py`, `code/evaluation/main.py`,
-the deterministic core `code/audit/` + `code/main.py`, the provider-agnostic client `code/llm/` (not yet wired in),
+the deterministic core `code/audit/` + `code/main.py`, the provider-agnostic client `code/llm/` (intent and screenshots, cache-only in the frozen run),
 `code/tools/dev/list_models.py`, unit tests `code/tests/`. Decisions D1–D15 are the user's.
+
+**Reading note.** This file is a chronological record. Where an earlier section conflicts with a later decision, the later
+decision applies. The current state is summarized in README.md ("Where to look") and in §18–§20.
 
 **Core principle (D11 revised):** an activity row may *propose* a resource-to-user link. **State and citations come only
 from observed evidence files.** When an observation contradicts an activity claim, the observation wins. D13 and D14
@@ -285,8 +288,8 @@ D17 approved `gemini-3.8-flash` for intent; it timed out on every request on 202
 free-tier quota (20 requests/day/model). On the free tier a run is feasible only with batching and the cache.
 
 Price source: https://ai.google.dev/gemini-api/docs/pricing (page "last updated 2026-10-22"). `usage_report.md` reports cost at
-these list prices even on the free tier. Until approval: intent uses the keyword fallback (labelled TEMPORARY in code and
-run log), and PNGs are a stub that logs "vision pending".
+these list prices even on the free tier. Current state (frozen run): intent and screenshots come from cached LLM responses;
+the keyword rules are only a fallback for API failures (D1, D18).
 
 ## 10. Decision log
 
@@ -343,7 +346,7 @@ These cases reuse real dataset identities and evidence. Only the request row is 
 | Item | Decision | Status |
 |---|---|---|
 | N1 post-T linking | D12-A: ownership only, logged, flag to disable | resolved |
-| N2 model IDs | D10 revised, D17: Gemini; see §9 | intent: substitute pending decision; vision: gemini-3.5-flash-lite by comparison |
+| N2 model IDs | D10 revised, D17, D18: Gemini; see §9 | intent: gemini-2.5-flash, batched (D18); vision: gemini-3.5-flash-lite by comparison (D17) |
 | N3 marketing_001 | D13 revised (Round 2): linked via activity_4008, flagged identity-mismatch | resolved |
 | N4 object_19 | D14-A: excluded (activity-only link, D11) | resolved |
 

@@ -4,6 +4,8 @@ Identifiers are normalized to tagged strings so that values from any evidence fo
     email:<lowercase>   phone:<digits>   hash:<lowercase hex64>   user:<user_N>   name:<casefold>
 Matching is exact on the normalized value; resource and user ids use token boundaries, so
 support_864 never matches support_8642 and user_1 never matches user_13.
+
+Decisions: S3 rules (CONTRACT.md §4): token-boundary matching, case-insensitive emails, near-miss rejection; full audit-log history (identifiers link records, they never set state).
 """
 from __future__ import annotations
 

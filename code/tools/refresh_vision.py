@@ -21,6 +21,8 @@ Steps:
      print READY TO SUBMIT.
   f. different: change nothing in the repo, print the row-level output diff and the extraction diffs, exit 2 (user decision;
      the decided fallback is to keep the current output and the documented limitation).
+
+Decisions: D31 (approved: at most 12 live calls after the quota reset), D26 (the result stays cache-only).
 """
 from __future__ import annotations
 
@@ -51,6 +53,8 @@ FIELDS = ("resource_id", "user_id", "name", "email", "phone", "status")
 DOCS_WITH_CONFIG_HASH = [ROOT / "README.md", CODE / "CONTRACT.md", CODE / "evaluation" / "evaluation_report.md"]
 REPORT = CODE / "evaluation" / "evaluation_report.md"
 MARKERS = ("D31:limitation", "D31:compliance", "D31:cost")
+README = ROOT / "README.md"
+README_MARKER = "D31:readme"
 
 
 def sha(path: Path) -> str:
@@ -151,6 +155,12 @@ def row_diff(before: Path, after: Path) -> list[str]:
 
 # ---------------------------------------------------------------- main
 def main() -> int:
+    """Run the D31 refresh; returns 0 (switched, READY TO SUBMIT), 2 (output would change, nothing switched).
+
+    Steps (see the module docstring): 0 preflight; a time gate; b re-extract into a staging cache within the call
+    budget; c field-by-field comparison; d candidate pipeline run and output diff; e switch config, cache, usage data
+    and docs, then verify (frozen run, validator, tests, zip); f print the diffs and stop.
+    """
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mock", choices=("identical", "different"), help="no network: answer from the old extractions")
     ap.add_argument("--max-calls", type=int, default=12)
@@ -175,6 +185,9 @@ def main() -> int:
     for m in MARKERS:
         if f"<!-- {m} -->" not in report or f"<!-- /{m} -->" not in report:
             raise SystemExit(f"preflight: marker {m} missing in evaluation_report.md")
+    readme = README.read_text(encoding="utf-8")
+    if f"<!-- {README_MARKER} -->" not in readme or f"<!-- /{README_MARKER} -->" not in readme:
+        raise SystemExit(f"preflight: marker {README_MARKER} missing in README.md")
     config_hash = sha(FROZEN)
     for d in DOCS_WITH_CONFIG_HASH:
         if config_hash not in d.read_text(encoding="utf-8"):
@@ -312,6 +325,11 @@ def main() -> int:
         block = f"<!-- {m} -->\n{body}\n<!-- /{m} -->" if m == "D31:limitation" else f"<!-- {m} -->{body}<!-- /{m} -->"
         text = re.sub(rf"<!-- {m} -->.*?<!-- /{m} -->", lambda _, block=block: block, text, flags=re.S)
     REPORT.write_text(text, encoding="utf-8")
+    readme_text = README.read_text(encoding="utf-8")
+    readme_block = (f"<!-- {README_MARKER} -->\n- **Screenshot prompt replaced (D31).** The screenshots were re-extracted with the neutral prompt\n"
+                    f"  (`code/prompts/vision_extract.md`); `output.csv` is byte-identical and no prompt contains a dataset id.\n<!-- /{README_MARKER} -->")
+    README.write_text(re.sub(rf"<!-- {README_MARKER} -->.*?<!-- /{README_MARKER} -->", lambda _: readme_block, readme_text, flags=re.S),
+                      encoding="utf-8")
     with (CODE / "CONTRACT.md").open("a", encoding="utf-8") as f:
         f.write(f"- **D31 done ({now_utc()}):** screenshots re-extracted with the neutral prompt ({made} call(s)); {n_diff} extracted "
                 f"field(s) changed; output.csv byte-identical; frozen_v1.toml repointed to `code/prompts/vision_extract.md` "

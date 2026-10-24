@@ -1,0 +1,4 @@
+# Development tools (lint and dead-code checks). Not needed to run the agent.
+-r requirements.txt
+ruff==0.17.2
+vulture==2.16

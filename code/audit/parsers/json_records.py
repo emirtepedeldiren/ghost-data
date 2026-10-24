@@ -5,6 +5,8 @@ Every dict carrying a `resource_id` is one unit. Its meaning comes from where it
   * collection row  - inside {collection, records:[...]} (bundles, reports); the collection is also
                       a Coverage snapshot (absence there proves ABSENT)
   * service export  - inside service_exports.<system>.<kind>[] with its own observed_at
+
+Decisions: D9 (system as named in the record), D19 (bundle snapshots as coverage), D23 (retention end dates).
 """
 from __future__ import annotations
 

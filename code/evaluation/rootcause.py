@@ -2,6 +2,8 @@
 
 Usage: python3 code/evaluation/rootcause.py --pred .work/X.csv --decisions .work/runs/X/decisions.jsonl [--cases]
 Reads only participant data + sample_output.csv (gold) + the run's own decision log.
+
+Decisions: D16 (tuning split only).
 """
 from __future__ import annotations
 

@@ -1,8 +1,10 @@
 """Does the request text authorize deletion? (S2, D1)
 
-TEMPORARY: until the LLM intent model is approved (D10), every request goes through the keyword
-fallback below. D1 keeps this fallback only for API failures once the LLM path exists. Each decision
-is labelled with its source so the run log shows that the fallback was used.
+The LLM classifier (IntentClassifier, batched and cached) decides. The keyword rules below are only a fallback: they
+are used when the API fails, when a batch fails its exact-id check, or with --no-llm. Every decision carries its
+source, so the run log shows whenever the fallback was used.
+
+Decisions: D1 (LLM intent, cached, keyword fallback only on API failure), D18 (batched, exact-id check, disagreements logged).
 """
 from __future__ import annotations
 
@@ -10,7 +12,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-TEMPORARY_FALLBACK_LABEL = "keyword_fallback(TEMPORARY: LLM intent pending approval)"
+KEYWORD_FALLBACK_LABEL = "keyword_fallback"
 
 # Deletion verbs/nouns in the six request languages seen in the dataset (en, es, pt, fr, ja, ko).
 DELETION = re.compile(
@@ -41,10 +43,10 @@ def keyword_intent(text: str) -> Intent:
     neg = NON_DELETION.search(text)
     pos = DELETION.search(text)
     if neg:
-        return Intent(False, TEMPORARY_FALLBACK_LABEL, f"non-deletion phrase {neg.group(0)!r}")
+        return Intent(False, KEYWORD_FALLBACK_LABEL, f"non-deletion phrase {neg.group(0)!r}")
     if pos:
-        return Intent(True, TEMPORARY_FALLBACK_LABEL, f"deletion phrase {pos.group(0)!r}")
-    return Intent(False, TEMPORARY_FALLBACK_LABEL, "no deletion phrase found")
+        return Intent(True, KEYWORD_FALLBACK_LABEL, f"deletion phrase {pos.group(0)!r}")
+    return Intent(False, KEYWORD_FALLBACK_LABEL, "no deletion phrase found")
 
 
 def classify(text: str) -> Intent:

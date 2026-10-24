@@ -3,6 +3,8 @@
 Usage: .venv/bin/python code/tools/vision_compare.py gemini-3.6-flash gemini-3.5-flash-lite
 For each screenshot the matching catalog activity (resource_id + email + user_id) is a cross-check, not ground
 truth: a correct reader of marketing_profile_console.png is expected to DISAGREE with activity_4008 (D13).
+
+Decisions: D17 (screenshot model comparison; development only; requires --live).
 """
 from __future__ import annotations
 

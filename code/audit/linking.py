@@ -13,6 +13,8 @@ Link sources:
   timing                D20 (L2): deletion_worker schedule relative to reported_at, global unique assignment
 Resources co-occurring in a unit (e.g. search_documents.source_resource_id) are linked only when the
 unit carries no other person's identifiers.
+
+Decisions: D11, D12, D13 (revised), D14, D20 (rule L2), D21; no tie-breaks between interchangeable candidates (D29, D32).
 """
 from __future__ import annotations
 

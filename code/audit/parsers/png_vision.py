@@ -3,6 +3,8 @@
 Without an LLM client (e.g. --no-llm) the parser returns no observations and reports the file as
 "vision pending". With a client, the extraction is cached per image, every id is validated
 (audit.vision.validate_record), and each record with a valid resource_id becomes one Observation.
+
+Decisions: D2, D17 (model choice), D31 (prompt path from the frozen config).
 """
 from __future__ import annotations
 

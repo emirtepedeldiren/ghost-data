@@ -6,6 +6,8 @@ screenshot extractions in code/llm_cache/). A prompt "leaks" when it contains an
 
 Usage: python3 code/tools/prompt_leaks.py [PROMPT_FILE ...]    (default: code/prompts/*.md)
 Exit status 1 when a leak is found.
+
+Decisions: D31.
 """
 from __future__ import annotations
 

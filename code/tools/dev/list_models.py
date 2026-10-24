@@ -5,6 +5,8 @@ Usage:
 
 Keys come from the environment or the repo-root .env (uncommitted):
 GEMINI_API_KEY for gemini, ANTHROPIC_API_KEY for anthropic.
+
+Decisions: D10, D17 (model discovery; development only).
 """
 from __future__ import annotations
 

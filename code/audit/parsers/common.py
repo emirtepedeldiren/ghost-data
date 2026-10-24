@@ -1,4 +1,7 @@
-"""Helpers shared by all evidence parsers: identifier scanning and structured-record state rules."""
+"""Helpers shared by all evidence parsers: identifier scanning and structured-record state rules.
+
+Decisions: record state rules of CONTRACT.md §6; D23 (parse_time, retention_end).
+"""
 from __future__ import annotations
 
 import re

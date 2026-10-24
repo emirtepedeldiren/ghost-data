@@ -1,3 +1,3 @@
-# Runtime dependency (PDF text layer). Python >= 3.11 (tomllib); everything else is the standard library.
-pypdf>=6,<7
-# Optional, only for provider = "anthropic" in a config: anthropic>=2.3,<3
+# Runtime dependencies. Python >= 3.11 (tomllib); tested on CPython 3.13.12. Everything else is the standard library.
+pypdf==6.21.2
+# Optional, only for provider = "anthropic" in a config (not used by the frozen run): anthropic==2.3.0
