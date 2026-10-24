@@ -1,13 +1,14 @@
 # CONTRACT.md — Ghost Data Still Exists deletion-audit agent
 
-Status: **DRAFT v0.2** (2026-10-24). Built so far: `code/contract.py` (shared rules), `code/validate.py` (§11),
-`code/evaluation/main.py` (§12), `code/tools/list_models.py` (N2). No pipeline code yet. Decisions D1–D14 are the
-user's; items marked **OPEN** await a decision.
+Status: **DRAFT v0.3** (2026-10-24). Built: `code/contract.py`, `code/validate.py`, `code/evaluation/main.py`,
+the deterministic core `code/audit/` + `code/main.py`, the provider-agnostic client `code/llm/` (not yet wired in),
+`code/tools/list_models.py`, unit tests `code/tests/`. Decisions D1–D15 are the user's.
 
-**Core principle (D11):** activity rows are claims. A resource is linked to a subject, or assigned a state, **only through
-an observed evidence file** (log, JSON, SQL, TXT, PDF, PNG). An activity row may *corroborate* an observation; it never
-creates a link or a state on its own. The single exception is the experimental `--timing-links` module (§8), which is
-off by default and exists only for the D3 A/B comparison.
+**Core principle (D11 revised):** an activity row may *propose* a resource-to-user link. **State and citations come only
+from observed evidence files.** When an observation contradicts an activity claim, the observation wins. D13 and D14
+still hold: marketing_001 is contradicted by its screenshot, and object_19 has no observed state.
+**D15:** the timing module is a normal link source under D11. It stays behind `--timing-links`; its default is decided by
+the sample comparison (§15).
 
 Precedence when sources disagree on the output format: `problem_statement.md` > `README.md` > `AGENTS.md` (D6).
 Precedence for packaging paths: `README.md` (D8).
@@ -237,12 +238,13 @@ inclusive boundary is load-bearing.
 |---|---|---|
 | `identifier` | a subject identifier co-occurs with the resource_id inside one unit (§4 S4 table) of a file with `captured_at <= T` | on |
 | `identifier_post_audit` | same, in a file captured after T (D12); ownership only, never state or citation | on (`--no-post-audit-links` disables) |
-| `timing` (D3) | deletion_worker events in `[requested_at, reported_at]` whose result matches `reported_status`; global one-to-one assignment across all cases; link **only when exactly one candidate remains**; ambiguous candidates are logged and left unlinked. **Activity-created link = explicit exception to D11.** The linked resource still needs a file observation for its state | **off** by default, flag `--timing-links` |
+| `catalog` | `LINK_RESOURCE_IDENTITY` activity naming a subject identifier (proposal, D11 revised) | on |
+| `timing` (D3, D15) | deletion_worker events in `[requested_at, reported_at]` whose result matches `reported_status`; global one-to-one assignment across all requests (eval + sample request rows, never their answers); link **only when exactly one candidate remains**; ambiguous candidates are logged and left unlinked | flag `--timing-links`; default decided by data (§15) |
 
-`LINK_RESOURCE_IDENTITY` activities are **not** a link source (D11). They are only logged as corroboration.
-Consequences of D11 accepted by the user: `object_19` (activity_4007 only) is excluded (D14, matches case_07 gold), and
-`marketing_001` is unlinked (D13). Sample resources whose only link is an activity row (e.g. case_03 `analytics_9406`,
-case_21 `account_6440`, case_01 `account_001`) are expected misses in the default run.
+`catalog` (D11 revised): a `LINK_RESOURCE_IDENTITY` activity naming a subject identifier proposes a link. The proposal
+is rejected when the resource's observations point only to other users (the observation wins), and is logged.
+A linked resource without any file observation `<= audit_at` gets no state. `object_19` and `marketing_001` therefore
+produce no step (D13, D14).
 
 D3 investigation result (2026-10-24): **no explicit join exists** for `analytics_9406` (case_03) or
 `account_6440` (case_21). Each id occurs in exactly three places: one activity row (`activity_3852`, `activity_3661`),
@@ -252,32 +254,24 @@ events. The only `batch=` keys (`rp-7718`) belong to an unrelated support-replic
 leaves 1 candidate in only 5 of the 32 samples. A loose identifier linker leaves 36 of 152 sample step resources unlinked.
 The A-vs-B comparison is reported in the evaluation report.
 
-## 9. LLM usage (D1, D2, D10)
+## 9. LLM usage (D1, D2, D10 revised)
 
-Policy (N2 decision): use the **newest Haiku** for intent and the **newest Sonnet** for vision, as returned by the Models
-API (`GET /v1/models`) for our key. Run `.venv/bin/python code/tools/list_models.py`; it prints model IDs, created_at and
-vision support, never the key.
+Provider: **Google Gemini** (D10 revised). Client: `code/llm/__init__.py`, one interface `LLMClient.generate(task, prompt,
+images=, json_schema=)`. Provider, per-task model IDs and list prices live in `code/config.toml`, never in logic. Responses
+are cached on disk (key = provider + model + task + inputs), and every call is appended to `code/cache/llm_calls.jsonl` with
+token usage. `temperature` is sent and, if a model rejects it, retried once without it and memoized for that model.
 
-| Use | Model ID | Price in/out per MTok | Status |
+Models API listing (`.venv/bin/python code/tools/list_models.py`, 2026-10-24): 46 generateContent models. Image-input
+support is not a field of the Gemini models API, so it is taken from the pricing page.
+
+| Use | Proposed model | List price in / out per 1M tokens | Status |
 |---|---|---|---|
-| intent (S2) | **PENDING Models API** (expected `claude-haiku-4-5`) | $1 / $5 (expected) | unconfirmed |
-| screenshots (S4) | **PENDING Models API** (expected `claude-sonnet-5`) | $2 / $10 (expected) | unconfirmed |
+| intent (S2) | `gemini-3.8-flash` (newest Flash in the listing) | $0.75 / $3.75 (through 2026-12-31; $1.50 / $7.50 from 2027-01-01) | **awaiting approval** |
+| screenshots (S4) | `gemini-3.8-flash` (newest priced image-input model) | same | **awaiting approval** |
 
-Status 2026-10-24: **not yet confirmed**. No `.env`, no `ANTHROPIC_API_KEY` in the environment, and no `ant` CLI profile were
-found, so the Models API could not be called. The "expected" values come from Anthropic's claude-api reference
-(price table cached 2026-06-24) and are **placeholders until the API listing is run**. Prices are not returned by the
-Models API; they are recorded from the pricing reference with its date.
-
-**Sampling parameters.** `temperature` is sent only to models that accept it. Implementation: send `temperature=0`; if the API
-returns `BadRequestError` naming the sampling parameter, retry once without it and memoize "no sampling" for that
-model ID for the rest of the run (logged). Expected: Haiku accepts it; Sonnet 5-class models reject sampling parameters,
-so vision determinism comes from the on-disk cache and structured output.
-
-The key comes from the `ANTHROPIC_API_KEY` env / uncommitted `.env` only (`.env` and `.venv/` are gitignored; verified).
-
-Per-call usage log `code/cache/llm_calls.jsonl` (gitignored, a raw data file): `{ts, stage, model, cache_hit, input_tokens,
-output_tokens, cache_read_input_tokens, latency_ms}`. `code/evaluation/usage_report.md` is generated from it for the final
-full run (calls, tokens, totals, per-request averages, cost by model and overall). Expected scale: about 27 + 11 calls.
+Price source: https://ai.google.dev/gemini-api/docs/pricing (page "last updated 2026-10-22"). `usage_report.md` reports cost at
+these list prices even on the free tier. Until approval: intent uses the keyword fallback (labelled TEMPORARY in code and
+run log), and PNGs are a stub that logs "vision pending".
 
 ## 10. Decision log
 
@@ -294,6 +288,10 @@ vision mismatch, post-T file skipped). This feeds the evaluation report and the 
 5. Every cited evidence_id exists in the manifest / activity / audit log and has `observed_at <= audit_at`.
 6. There is no remediation without a matching finding, and every remediated resource has a matching verification.
 7. Regression: the 32 samples are scored by `code/evaluation/main.py` (metrics in §12).
+8. `COMPLETE`/`INCOMPLETE` with an empty array is reported as a **warning** (`empty_steps`), not a failure: the problem
+   statement does not forbid it, but an unproven COMPLETE is almost certainly wrong. The scorer still counts it as wrong.
+Unit tests: `python3 -m unittest discover -s code/tests` (token boundaries incl. support_864 vs support_8642, identifier
+normalization, historical-email resolution, all six log dialects, ordering, intent fallback).
 
 ## 12. Evaluation (`code/evaluation/main.py`; written up in `code/evaluation/evaluation_report.md`, D8)
 
@@ -330,7 +328,7 @@ These cases reuse real dataset identities and evidence. Only the request row is 
 | Item | Decision | Status |
 |---|---|---|
 | N1 post-T linking | D12-A: ownership only, logged, flag to disable | resolved |
-| N2 model IDs | newest Haiku / newest Sonnet from the Models API | **blocked**: needs `ANTHROPIC_API_KEY` in `.env` |
+| N2 model IDs | D10 revised: Gemini; newest Flash for intent, newest vision-capable for screenshots (§9) | proposed `gemini-3.8-flash` for both, **awaiting approval** |
 | N3 marketing_001 | D13-B: unlinked and flagged; identity search found no match | resolved |
 | N4 object_19 | D14-A: excluded (activity-only link, D11) | resolved |
 
@@ -348,3 +346,22 @@ Original wording of the items, kept for traceability:
 - **N4 — `object_19`.** `activity_4007` says delivery_confirmation_19.pdf "belongs only to priya.raman@gmail.com and user_07",
   but sample case_07 gold contains only `support_001`, not `object_19`. No other source mentions object_19 after 2026-02-13.
   A: exclude the `object_*` system from findings unless a state observation exists ≤ T (matches the gold). B: report it as a remaining SUPPORT_ATTACHMENT.
+
+## 15. Baseline 2026-10-24 (32 samples, no tuning)
+
+| Metric | `--timing-links` off | on |
+|---|---|---|
+| status accuracy | 93.75% | 93.75% |
+| step precision / recall / F1 | 97.95 / 74.09 / 84.37% | 94.84 / 76.17 / 84.48% |
+| evidence_id accuracy (field) | 74.23% | 75.13% |
+| sequence accuracy | 15.62% | 15.62% |
+
+Missing gold steps by root cause, timing off (50 missing of 193; 49 by identity key):
+- 23: **identifier-free resources.** 404 account lookups without an email and anonymized analytics, linkable only through activity (13 activity-only plus 10 observed without identifiers).
+- 17: **state.** A later *partial* snapshot (evidence_51 at exactly `audit_at`, the empty inventory evidence_90) overrode an
+  explicit observation as "absent by coverage" (cases 05, 17, 21, 24, 25, 27, 28).
+- 6: **intent.** The temporary keyword fallback missed case_26 ("confirm that the profile is gone").
+- 3: **unreachable.** `audit_record_5569`, `audit_record_6645` and the INCOMPLETE-only verification of post-audit-linked `audit_record_4128` have no `<= audit_at` observation (two ids occur in no participant file).
+
+Extra steps: 2 with timing off (one stale March lookup `account_6523`, one catalog proposal `tombstone_17`); 5 with timing on (+3 wrong
+timing assignments). No parser gaps, identity misses or ordering errors among the top-10 diffs. **No fix has been applied yet** (user instruction).

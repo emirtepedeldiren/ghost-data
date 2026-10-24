@@ -5,3 +5,4 @@ __pycache__/
 code.zip
 *.pyc
 .DS_Store
+code/cache/

@@ -1,0 +1,19 @@
+# Runtime configuration. Provider and model IDs live here, never in pipeline logic (D10 revised).
+# API keys are NOT configured here: GEMINI_API_KEY / ANTHROPIC_API_KEY come from the environment or the
+# uncommitted repo-root .env.
+
+[llm]
+provider = "gemini"              # "gemini" | "anthropic"
+cache_dir = "code/cache/llm"     # cached responses, keyed by provider+model+task+inputs
+usage_log = "code/cache/llm_calls.jsonl"
+
+[llm.models]
+# PROPOSED 2026-10-24 from the Gemini models API listing; awaiting user approval.
+intent = "gemini-3.8-flash"
+vision = "gemini-3.8-flash"
+
+# List prices in USD per 1M tokens, used for usage_report.md cost estimates even on the free tier.
+[llm.prices."gemini-3.8-flash"]
+input = 0.75
+output = 3.75
+source = "https://ai.google.dev/gemini-api/docs/pricing (page updated 2026-10-22; price valid through 2026-12-31, $1.50/$7.50 from 2027-01-01)"

@@ -141,3 +141,51 @@ repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-or
 worktree=main
 parent_agent=none
 
+## [2026-10-24T13:41:01Z] D10/D11 revised, D15; deterministic core built; honest sample baseline
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Scorer and validator accepted — A1/A2/A3 plus the planted-error test are exactly the evidence I wanted.
+
+CORRECTION to D11 (my decision was too strict): the gold answers for case_01, case_03 and case_21 include resources linked only through activity rows. A rule that contradicts the canonical answers is wrong, not principled.
+DECISION D11 (revised): An activity may propose a resource↔user link. State and citations come only from observed evidence files. When an observation contradicts an activity claim, the observation wins.
+D13 and D14 still hold under the revised rule: marketing_001 is contradicted by its screenshot; object_19 has no observed state.
+DECISION D15: The timing module is no longer an exception to D11. It stays flag-controlled, and the data decides its default (see acceptance below).
+
+DECISION D10 (revised): Provider = Google Gemini instead of Anthropic.
+RATIONALE: I already have a Gemini key; total LLM usage is ~27 cached intent calls + 11 cached screenshots, so the provider choice has negligible impact on quality and avoids new billing.
+REQUEST: Make the model client provider-agnostic (one interface, provider and model IDs set in config, never hardcoded in logic). Update list_models.py to read GEMINI_API_KEY from .env and print only model IDs and whether they support image input — never the key. I have added the key to .env; run the script and propose the newest Flash-class model for intent and the newest vision-capable model for screenshots, with list prices, for my approval. usage_report.md will report estimated cost at list prices even on the free tier.
+Do not block on this — build the deterministic core in parallel.
+
+REQUEST — deterministic core, measured on the 32 samples:
+1. Identity resolution: current + historical emails/phones/hashes, case-insensitive, word-boundary matching (the support_864 / support_8642 decoy is a unit test).
+2. Parsers for every text evidence format: SQL via sqlite3, JSON bundles, the txt handover, all 5 log dialects with trace_id joins, PDF text. Each parser emits the same normalized observation record: (file_id, captured_at, line_time, system_id, resource_id, category, observed_state, identifiers_present).
+3. State reconstruction at audit_at plus the policy mapping from deletion_rules.csv, then step generation through contract.py.
+4. PNGs: stub that returns no observations and logs "vision pending". Intent: all 32 samples are deletion requests; use the keyword fallback for now, clearly labelled as temporary in the code and in the run log. No case-specific logic anywhere.
+
+ACCEPTANCE CRITERIA:
+  - the validator passes on the 32-sample predictions
+  - scorer report for two runs, side by side: --timing-links off vs on. Columns: status accuracy, step P/R/F1, evidence_id accuracy, sequence accuracy.
+  - the 10 largest per-case diffs, grouped by root cause (parser gap / identity miss / linking / policy / ordering)
+Do not tune anything yet. I want the honest baseline first.
+
+HOUSEKEEPING: commit .gitignore and all work so far with a descriptive message, then push.
+
+Agent Response Summary:
+Committed phase-0 work on new branch phase0-contract-and-eval (branched off main per the harness rule) and pushed it to origin. Listed Gemini models with the key in a header (46 models) and proposed gemini-3.8-flash for intent and vision at the pricing page's list price, pending approval. Built the provider-agnostic client (code/llm, code/config.toml); it is not wired in and no live calls were made. Surveyed every evidence format and found 6 log dialects, not 5; built code/audit (identity, 5 parsers emitting one Observation schema, linking, state at audit_at, policy, steps) plus code/main.py, a PNG stub and a TEMPORARY keyword intent; 10 unit tests pass. Validator passes on both sample runs after the empty-steps check became a warning. Baseline with timing off/on: status 93.75/93.75%, step P/R/F1 97.95/74.09/84.37 vs 94.84/76.17/84.48, evidence 74.23/75.13%, sequence 15.62/15.62%. Root causes of the 50 missing steps: identifier-free resources 23, partial-snapshot coverage overriding explicit observations 17, intent fallback 6, unreachable 3; no fixes applied.
+
+Actions:
+* git checkout -b phase0-contract-and-eval; commit 473bc22; git push -u origin
+* Rewrote code/tools/list_models.py (Gemini REST, key in header); ran it; WebFetch of the Gemini pricing page
+* Created code/audit/{vocab,model,identity,data,linking,reconstruct,intent}.py and parsers/{common,json_records,sql_snapshot,text_handover,logs,pdf_text,png_vision}.py
+* Wrote code/main.py, code/llm/__init__.py, code/config.toml, code/tests/test_core.py; added code/cache/ to .gitignore
+* Edited code/validate.py (empty_steps becomes a warning) and code/CONTRACT.md (v0.3, section 15 baseline)
+* Ran pipeline on samples (timing off/on) and on the 518 eval set; ran validator, scorer and scratchpad root-cause attribution
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+

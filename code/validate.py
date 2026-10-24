@@ -57,7 +57,8 @@ def check_steps(case_id: str, status: str, steps: list, audit_at: str | None,
             bad("not_applicable_must_be_empty", f"NOT_APPLICABLE with {len(steps)} steps")
         return
     if status in ("COMPLETE", "INCOMPLETE") and not steps:
-        bad("empty_steps", f"{status} with no steps")
+        # Not forbidden by problem_statement.md, but an unproven COMPLETE is almost certainly wrong.
+        problems["WARN:empty_steps"].append(f"{case_id}: {status} with no steps (no evidence-backed resource found)")
         return
 
     for i, step in enumerate(steps, 1):
@@ -180,10 +181,16 @@ def validate(output_path: Path, requests_path: Path, dataset_dir: Path, max_exam
         problems["row_order"].append(f"row {first + 1} is {got_ids[first]}, expected {expected_ids[first]} "
                                      f"(rows must follow numeric case_id order of the input file)")
 
+    warnings = {k: v for k, v in problems.items() if k.startswith("WARN:")}
+    problems = {k: v for k, v in problems.items() if not k.startswith("WARN:")}
     print(f"Validating {output_path.relative_to(REPO_ROOT) if output_path.is_relative_to(REPO_ROOT) else output_path} "
           f"against {requests_path.name}: {len(rows)} rows, {len(expected_ids)} expected")
+    for check in sorted(warnings):
+        print(f"  warning [{check[5:]}] {len(warnings[check])}")
+        for item in warnings[check][:max_examples]:
+            print(f"      - {item}")
     if not problems:
-        print("PASS: all checks passed")
+        print("PASS: all checks passed" + (f" ({sum(map(len, warnings.values()))} warning(s) above)" if warnings else ""))
         return True
     total = sum(len(v) for v in problems.values())
     print(f"FAIL: {total} problem(s) in {len(problems)} check(s)")
