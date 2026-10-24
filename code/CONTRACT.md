@@ -476,3 +476,10 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
   - Fallback if the output differs and the change is not a clear improvement: revert the prompt, keep the old cache and keep the
     limitation documented. The current `output.csv` stays the submission.
   - Guarded by the `PromptLeaks` tests (the frozen-config check is skipped, visibly, until the refresh).
+- **D32 (rejected, 2026-10-24):** twin disambiguation by record order, stated as a real field. Adoption threshold decided in advance:
+  ≥ 97% accuracy on ≥ 30 known-owner instances, per source.
+  - Result (self-supervised, owners known through identifiers only, ties undecidable): `requested_at` order predicts owners at 18–45%
+    (2,348 records, 588 lists). `reported_at` and `audit_at` are tied within twin sets (221/221, 220/221), so they cannot separate twins.
+  - Case number follows `requested_at` only within slots (424/440 pairs reversed), and not consistently across files (Spearman −0.79
+    eval, +0.11 samples).
+  - D29 stands; output.csv is unchanged (evaluation_report.md §8).

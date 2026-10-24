@@ -406,6 +406,26 @@ The eval set has no labels, and D20 alone changed the steps of 160 eval cases, s
     ascending order of their owners' case numbers (6 of 6 known owners). That is generator order (case_id order), which the
     guardrails exclude; it was not used and not tested on the holdout. Resolving the twins honestly is not possible from this data,
     which supports D29.
+  - **Round 5b: is record order a real processing-order signal? (D32, rejected).**
+    - *Case number vs real fields.* The correlation is not stable across files: Spearman vs `requested_at` is −0.79 on eval and +0.11 on
+      the samples. Within a worker slot, case number runs opposite to `requested_at` in 424 of 440 untied pairs, so the only real field
+      that could stand behind "case order" is `requested_at`.
+    - *Can any field tell twins apart?* `requested_at` is the only one: it differs within 215 of 221 twin candidate sets, while
+      `reported_at` is tied in 221 and `audit_at` in 220.
+    - *Self-supervised validation.* Every evidence list (JSON arrays, SQL tables per collection, log and handover line order) and every
+      activity group (same event and resource type within a worker slot, `activity_id` order) with at least 2 same-type records whose
+      owners are known through identifiers was checked. No gold labels were used. Tied values count as undecidable (a stable sort on
+      ties would just reproduce the list).
+
+      | Order rule | JSON | SQL | Logs/text | Activity |
+      |---|---|---|---|---|
+      | `requested_at` descending, exact owner predictions | 262/631 (41.5%) | 128/678 (18.9%) | 123/689 (17.9%) | 158/350 (45.1%) |
+      | `requested_at`, pairs in list order vs reversed | 457 vs 1,071 | 876 vs 886 | 1,000 vs 961 | 107 vs 105 |
+      | `reported_at` ascending, exact (strictly ordered lists only) | 52/167 | 57/134 | 34/127 | 58/68 (85%) |
+
+    - *Verdict.* No real field reaches the adoption threshold of ≥ 97% on ≥ 30 known instances. The one field that varies within twin
+      sets (`requested_at`) predicts order at chance, so ordering is not a processing-order signal. Where it holds (e.g. one bundle), it is
+      file-level generator order. D29 stands, and output.csv is unchanged.
 - **Unreachable gold (1 tuning step, 1 holdout step):** `audit_record_6645` and `audit_record_5569` are in no participant file.
 - **Known extra step (D28):** `account_6523` in case_17. It belongs to the same person's earlier request (case_46); see §9.
 - **No observable records (D27).** A deletion subject with nothing observable `<= audit_at` gets COMPLETE with `[]`. This is logged as
@@ -423,6 +443,7 @@ The eval set has no labels, and D20 alone changed the steps of 160 eval cases, s
 |---|---|---|
 | D28 | Request scoping: a resource seen only before a person's earlier request belongs to that request (would drop `account_6523` from case_17) | It fixes 1 tuning step and changes 0 eval outputs. A rule whose only effect is matching a sample is fitting, not generalizing. |
 | D29 | Deterministic tie-break that assigns each interchangeable twin resource to one candidate request | It could raise sequence accuracy on about half of those cases, but an audit tool that attributes another person's data to a requester is wrong by design. Round 5 confirmed that no person-level field separates the twins; the only separator found is file order matching case_id order (§8), an artifact. |
+| D32 | Assign twin resources by record order, stated as a real field (`requested_at` / `reported_at` / `audit_at` processing order) | Tested without labels on 2,348 known-owner records across 588 lists: no field reaches ≥ 97% on ≥ 30 instances; `requested_at`, the only field that differs within twin sets, predicts at chance (18–45%) (§8). |
 | D20 | Closed-world guard in L2 (account events of people without a request block follow-up links) | No measured effect; it would only add complexity. |
 | D13 (original) | Veto a catalog link whenever an observation shows a different identity | It left case_63 as an unprovable empty COMPLETE; revised to veto only identities that resolve to another known user. |
 | Round 1 | Scope-aware absence rule (a) and fallback rule (b) | Measured worse than (c) (§5.2). |

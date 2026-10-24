@@ -744,3 +744,37 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-24T19:40:44Z] Round 5b: record order as processing-order signal tested; rejected (D32)
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Round 5 changes the stakes. 217 ambiguous resources across 257 of 518 eval cases are left unlinked — nearly half the eval set, not the 7 steps tuning suggested. You also found that evidence_02 lists analytics records in ascending order of their owners' case numbers (6/6 known owners).
+
+REVISION of my guardrail and D29: I excluded case_id order because it looked like a sample-only artifact. But if case numbers follow a real field (request time, queue order), then "records listed in case order" means "records written in processing order" — a real system behaviour, not a guess. That deserves a proper test before we reject it. D29's privacy argument still holds for unvalidated guesses; it does not forbid a validated rule.
+
+ROUND 5b — test ordering as a real signal (time box: stop by 21:00 UTC tonight; if unresolved, keep the current output)
+REQUEST:
+  1. Is case_id order the same as a real field? Across all 550 requests, check the rank correlation of case number with requested_at, reported_at and audit_at, overall and within each worker slot. If case order matches a real field, state the rule in terms of THAT field, never case_id.
+  2. Where does order exist? For each evidence file that lists multiple identifier-free records of one type, and for activity rows of the same event type within one worker slot (activity_id order), measure whether order follows that field.
+  3. Self-supervised validation, no gold labels: in eval + samples, take every slot where at least two resources have owners known through identifiers. Predict their owners with the ordering rule and report accuracy and n per source (each file type, activity rows).
+  4. ADOPTION THRESHOLD, decided now: adopt only if accuracy ≥ 97% on n ≥ 30 known instances, stated in terms of a real field, and only for the sources where it validated. Otherwise D29 stands and this goes into the report as a tested, rejected hypothesis.
+  5. If adopted: tuning metrics, holdout aggregate (must not regress), eval drift (resources linked, cases changed, status changes), validator and tests. Precision must stay ≥ 97% on tuning.
+
+TIMING: if output.csv changes, update refresh_vision.py's expected sha256 and rerun both mock dry runs in the same turn. Record the decision as D32 in CONTRACT.md either way.
+ACCEPTANCE: the correlation table, the validation table, the adopt/reject verdict against the threshold, and if adopted the metrics. Commit and push with log.txt.
+
+Agent Response Summary:
+Correlations: case number vs requested_at is -0.79 on eval but +0.11 on the samples; within worker slots it runs opposite to requested_at in 424/440 untied pairs, so requested_at is the only real field that could stand behind case order. Validation without gold covered 2,348 known-owner records in 588 lists (JSON, SQL, logs/text, activity), with ties undecidable. requested_at order predicts owners at 17.9-45.1% (pairwise near chance); reported_at and audit_at reach high numbers only through ties and are tied within twin sets (221/221, 220/221), so they cannot separate twins. A first pass that looked like 94-100% for audit_at was caught as a stable-sort-on-ties artifact. Verdict against the threshold: REJECT; D29 stands, D32 recorded, output.csv unchanged so tomorrow's refresh is unaffected.
+
+Actions:
+* Scratchpad r5b_corr.py, r5b_validate.py (read-only, no API calls, no gold labels)
+* Edited code/evaluation/evaluation_report.md (section 8 Round 5b, section 9 D32 row) and code/CONTRACT.md (D32)
+* refresh_vision preflight, unit tests, validator, table check; rebuilt code.zip; git commit and push incl. log.txt; fast-forward main
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
