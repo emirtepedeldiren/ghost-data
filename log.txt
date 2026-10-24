@@ -710,3 +710,37 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-24T19:35:02Z] Round 5: twin disambiguation investigated (no signal; artifact rejected)
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Reference point from another participant: 32 samples at status 100%, step F1 99.2%, sequence 90.6% (29/32). We are at 96.5% F1 and 62.5% (20/32). Their numbers are probably in-sample, but 29/32 is hard to reach by guessing, so they may have found a real signal for the twin resources that we leave unlinked. Time-boxed investigation tonight, no live API calls, no output change unless I approve.
+
+ROUND 5 — twin disambiguation
+MY HYPOTHESIS: identifier-free twin records may still carry indirect person signals: country, locale/language, phone country code, timezone, currency, product/category matching the person's orders in support messages, signup or account-creation dates, cohort labels.
+REQUEST:
+  1. Size of the prize first: on the 518 eval cases, how many resources are left unlinked by L2 because of ambiguity, and in how many cases? Same counts for tuning.
+  2. For every tuning twin group (incl. analytics_4574 / analytics_6077, analytics_1895 / analytics_4566, analytics_9406 / analytics_5589, account_7012 / account_5482): list EVERY field of each record and every field of each candidate person (identity row, audit history, request row incl. language of request_text, any other record already linked to them). Look for a field that separates them.
+  3. If a separating signal exists: state it as a general rule, test it on tuning first and report how many twins it resolves and whether any resolution is wrong. Then holdout aggregate only.
+  4. If nothing separates them: say so plainly. That supports D29 and goes into the report as evidence.
+
+GUARDRAILS: no rule that uses case_id order, activity order, timestamp jitter or anything that only works on the samples (D28/D29 still hold). No guessing.
+TIMING: tomorrow's refresh_vision.py checks output.csv sha256 774aa9ca…. If I approve a rule that changes output tonight, the script's expected hash and dry runs must be updated in the same turn.
+
+ACCEPTANCE: the prize size, the twin field tables, and either a tested rule or a clear "no signal". Commit and push (including log.txt).
+
+Agent Response Summary:
+Prize: L2 leaves 217 eval resources ambiguous (113 accounts, 102 analytics, 2 legal holds) across 257 eval cases, and 14 resources across 9 tuning cases. A field-by-field comparison of every tuning twin group against every candidate person (identity row, audit history, request row and language, all linked records) found no separating field. Account twins have no fields; analytics twins differ only in metrics, products and a cohort that is identical within each pair. Products are not a signal (1 of 21 known-owner pairs match, below chance). The only separator found is an artifact: evidence_02 lists analytics records in ascending owner case order (6/6 known), which the guardrails exclude, so it was not used and not tested on the holdout. Clear "no signal"; it supports D29 and is documented in the report. No output change, so tomorrow's refresh hash stays valid.
+
+Actions:
+* Scratchpad r5_prize.py, r5_fields.py, r5_products.py (read-only, no API calls); .work/r5_fields.txt dossier
+* Edited code/evaluation/evaluation_report.md (section 8 twin bullet, section 9 D29 row)
+* refresh_vision preflight re-checked; unit tests, validator; rebuilt code.zip; git commit and push incl. log.txt; fast-forward main
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

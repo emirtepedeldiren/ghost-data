@@ -392,6 +392,20 @@ The eval set has no labels, and D20 alone changed the steps of 160 eval cases, s
 - **Interchangeable twin resources (7 tuning steps, D29).** When several requests share a `reported_at` slot and their resources carry no
   identifiers anywhere, the data cannot tell them apart: `account_410` {case_23, 547, 548}, `account_7012` {28, 29}, `analytics_9406` {03, 44},
   `analytics_5335` {21, 23, 546, 547, 548}, `analytics_1895`/`analytics_4566` {24, 25, 26, 549, 550}, `analytics_4574` {27, 28}. They stay unlinked.
+  *Round 5 investigation (no labels used beyond the tuning gold):*
+  - **Size:** L2 leaves 217 eval resources ambiguous (113 accounts, 102 analytics, 2 legal holds) across 257 eval cases; on tuning
+    the figure is 14 resources across 9 cases.
+  - **Every field compared, nothing separates them.** For each tuning twin group, every field of each twin record (all evidence units,
+    activity rows) was compared with every field of each candidate person (identity row, audit history, request row and its
+    language, every record already linked to them). Account twins have no fields at all (a FAILED delete claim and at most a 404
+    with `profile: null`). Analytics twins differ only in metrics, purchased products and the cohort label, and the cohort is
+    identical within each pair. No candidate carries a comparable field (no product, cohort, locale or region).
+  - **Products are not a signal:** on 21 known-owner pairs where both the person's analytics record and their own support message
+    name a product, they match 1 time in 21, below chance (8 distinct products, about 2.6 expected).
+  - **Only an artifact separates them:** in `customer_data_snapshot_bundle_20260917.json` the analytics records are listed in
+    ascending order of their owners' case numbers (6 of 6 known owners). That is generator order (case_id order), which the
+    guardrails exclude; it was not used and not tested on the holdout. Resolving the twins honestly is not possible from this data,
+    which supports D29.
 - **Unreachable gold (1 tuning step, 1 holdout step):** `audit_record_6645` and `audit_record_5569` are in no participant file.
 - **Known extra step (D28):** `account_6523` in case_17. It belongs to the same person's earlier request (case_46); see §9.
 - **No observable records (D27).** A deletion subject with nothing observable `<= audit_at` gets COMPLETE with `[]`. This is logged as
@@ -408,7 +422,7 @@ The eval set has no labels, and D20 alone changed the steps of 160 eval cases, s
 | Decision | Proposal | Why rejected |
 |---|---|---|
 | D28 | Request scoping: a resource seen only before a person's earlier request belongs to that request (would drop `account_6523` from case_17) | It fixes 1 tuning step and changes 0 eval outputs. A rule whose only effect is matching a sample is fitting, not generalizing. |
-| D29 | Deterministic tie-break that assigns each interchangeable twin resource to one candidate request | It could raise sequence accuracy on about half of those cases, but an audit tool that attributes another person's data to a requester is wrong by design. |
+| D29 | Deterministic tie-break that assigns each interchangeable twin resource to one candidate request | It could raise sequence accuracy on about half of those cases, but an audit tool that attributes another person's data to a requester is wrong by design. Round 5 confirmed that no person-level field separates the twins; the only separator found is file order matching case_id order (§8), an artifact. |
 | D20 | Closed-world guard in L2 (account events of people without a request block follow-up links) | No measured effect; it would only add complexity. |
 | D13 (original) | Veto a catalog link whenever an observation shows a different identity | It left case_63 as an unprovable empty COMPLETE; revised to veto only identities that resolve to another known user. |
 | Round 1 | Scope-aware absence rule (a) and fallback rule (b) | Measured worse than (c) (§5.2). |
