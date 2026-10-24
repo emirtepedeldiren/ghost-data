@@ -17,7 +17,7 @@ from pathlib import Path
 
 from audit import vocab
 from audit.model import Coverage, Observation
-from audit.parsers.common import record_state, resource_ids_in, unit_identifiers
+from audit.parsers.common import record_state, resource_ids_in, retention_end, unit_identifiers
 
 TABLE_SUFFIX = re.compile(r"_(primary|[a-z_]*replica[a-z_]*)$")
 
@@ -87,7 +87,7 @@ def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names:
                 observed_state=record_state(category, flat),
                 identifiers_present=frozenset(unit_identifiers(rec, unique_names)),
                 linked_resources=frozenset(resource_ids_in(rec) - {rid}),
-                named_system=named_system, locator=f"{path.name}:{table}[{n}]",
+                named_system=named_system, locator=f"{path.name}:{table}[{n}]", retention_until=retention_end(flat),
                 unit_kind=f"sql:{'replica' if 'replica' in table else 'primary' if table.endswith('_primary') else 'table'}:{collection}",
                 store=store,
             ))

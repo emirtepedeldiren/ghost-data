@@ -24,6 +24,7 @@ class Observation:
     locator: str = ""                  # path:line or table:row, for traceability
     unit_kind: str = ""                # parser family + event / collection
     store: str = ""                    # "" = the system's primary store; else a named copy (e.g. a replica table)
+    retention_until: str | None = None  # retention / hold end stated by the unit (ISO-8601), D23
 
 
 @dataclass(frozen=True)

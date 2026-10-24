@@ -395,3 +395,48 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-24T15:00:44Z] Round 3: D23 retention evaluation, D25 check, cache tokens, E1-E5
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Round 3 audit reviewed. Two conclusions.
+1. MY HYPOTHESIS IS REFUTED for this data: every retention and hold end date is 2027–2034, after every audit_at. The hidden answers cover these same 518 cases, so condition evaluation changes 0 outputs. Recorded as a refuted hypothesis, not a fix.
+2. The real gap is code honesty: CONTRACT §6 says "retention_until > T" but the code never parses it. A code judge reading both would see a mismatch.
+
+DECISION D23: implement real evaluation for rule_12 and rule_13 (parse retention_until / retained_until, compare with audit_at; not met → DELETE). Undeterminable stays "assumed met", but is now an explicit, logged branch, not a silent default. Add one unit test per branch. ACCEPTANCE: output.csv is byte-identical before and after.
+
+DECISION D24 (tombstones with no linked account, cases 543, 544, 547–550): keep as is. RATIONALE: a tombstone exists only because an account was deleted, so its existence satisfies "account is deleted".
+
+DECISION D25 (rule_05 without visible shared context): keep REDACT. RATIONALE: the policy names no alternative; redaction is the safe choice, deletion destroys agent/order context that may be required.
+REQUEST: confirm with the 24 tuning gold cases that every support message there is REDACT. If any is DELETE, stop and report it.
+
+QUOTA — IMPORTANT CORRECTION: the challenge is 24 hours. A schedule that runs on Oct 25/26 misses the deadline and is not acceptable.
+DECISION D26: Billing could not be enabled (card declined), so we stay on the free tier.
+PLAN: the final run is served entirely from the existing response cache (0 live calls). usage_report.md reports the 16 original calls that produced the cached responses — provider, model, input/output tokens, list-price cost — and states explicitly that the final run used cached responses and when they were created.
+REQUEST: confirm the cache stores per-call token counts for every response the final output depends on. If any are missing, tell me which — do not make new calls.
+CONSEQUENCE: no prompt change that invalidates the cache unless its impact estimate is non-zero and it fits the remaining quota (lite 9, 2.5-flash 4 today; reset 07:00 UTC). If the Owner-gap impact is zero, skip it and document it as a known limitation.
+
+OWNER-COLUMN PROMPT GAP: before spending any calls, estimate the impact. Which screenshots have an Owner column, and would extracting those emails create or change any link that is not already made another way? If the answer is zero, skip it per D26.
+
+THEN, in this round:
+  B. Make E1–E5 runnable cases under code/evaluation/ (inputs + expected output + pass/fail) and include their results in evaluation_report.md.
+  C. account_6523 (case_17): thanks for the correction. Investigate only if it fits in this turn; it is 1 step, low priority.
+
+ACCEPTANCE: D23 tests pass with byte-identical output.csv, the D25 gold check, the cache token confirmation, the Owner-gap impact estimate, E1–E5 passing. End with ROUND 3 SUMMARY, commit and push.
+
+Agent Response Summary:
+D25 check: all 7 tuning resources the evidence labels SUPPORT_MESSAGE are REDACT. The 3 deleted support_* resources are 2 explicit attachments plus support_002, a legacy contact-index entry with no record type, so no stop. D23: retention_until is parsed in all parsers and rule_12/13 now have explicit met / not met / undeterminable branches (logged). output.csv is byte-identical, and the branch counts equal the audit tool's. 4 new tests; 19/19 pass. Cache: all 16 entries the output depends on store token counts equal to the call log. Owner gap: the model already reads the Owner emails, and a zero-call replay that uses them changes 0 outputs, so it was skipped as a known limitation. E1-E5 are runnable and pass 5/5 (1 live 2.5-flash call for E1-E3 texts in their own batch; E4 moved off the holdout and outputs an empty COMPLETE, flagged). C: a request-scoping rule would drop only account_6523 from case_17 (0 eval changes), proposed only.
+
+Actions:
+* Edited code/audit/{model,vocab,reconstruct}.py, parsers/{common,json_records,sql_snapshot,logs,pdf_text}.py, code/main.py (D23, extra-text intent batches); code/tests/test_core.py (+4 tests, fixed D22 fixture)
+* Created code/evaluation/custom_cases.py; updated code/CONTRACT.md (v0.7, section 19) and code/evaluation/evaluation_report.md (sections 5, 5.1, 6)
+* Scratchpad replays: cache-key recorder (16 entries), Owner-email patch (0 diffs), scoping-rule count; viewed customer_export_console PNG
+* Gemini API: 1 live intent call (custom cases); ran eval, samples, validator, scorer (holdout aggregate), unit tests; git commit and push
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

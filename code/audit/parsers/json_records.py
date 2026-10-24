@@ -13,7 +13,7 @@ from pathlib import Path
 
 from audit import vocab
 from audit.model import Coverage, Observation
-from audit.parsers.common import is_null, record_state, resource_ids_in, unit_identifiers
+from audit.parsers.common import is_null, record_state, resource_ids_in, retention_end, unit_identifiers
 
 SERVICE_EXPORT_CATEGORY = {
     "profile_lookups": "USER_PROFILE",
@@ -39,7 +39,7 @@ def _obs(file_id, captured_at, line_time, rec, named_system, category, state, un
         category=category, observed_state=state,
         identifiers_present=frozenset(unit_identifiers(rec, unique_names)),
         linked_resources=frozenset(resource_ids_in(rec) - {rid}),
-        named_system=named_system, locator=locator, unit_kind=kind,
+        named_system=named_system, locator=locator, unit_kind=kind, retention_until=retention_end(rec),
     )
 
 

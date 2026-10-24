@@ -163,7 +163,7 @@ class StateAndCatalogRules(unittest.TestCase):
     def test_d22_unblocked_backup_is_restore_risk(self):
         from audit.model import EvidenceIndex
         from audit.reconstruct import StateIndex
-        rules = [{"data_category": "BACKUP_ARCHIVE", "required_action": "RETAIN"}]
+        rules = [{"rule_id": "rule_14", "data_category": "BACKUP_ARCHIVE", "required_action": "RETAIN"}]
         subj = frozenset({"email:p1@example.com"})
         held = _obs("backup_9287", idents=subj)
         si = StateIndex(EvidenceIndex(observations=[held]), [], rules)
@@ -186,3 +186,44 @@ class StateAndCatalogRules(unittest.TestCase):
         known = {"marketing_001": [_obs("marketing_001", idents={"email:p2@example.com"})]}
         links, rejected, _ = catalog_links(subject, "2026-09-15T00:00:00Z", act, OwnershipIndex([], res), known)
         self.assertEqual((links, len(rejected)), ([], 1))
+
+
+class RetentionConditionD23(unittest.TestCase):
+    """D23: rule_12 / rule_13 are evaluated from the stated end date captured <= audit_at."""
+    RULES = [{"rule_id": "rule_12", "data_category": "SECURITY_AUDIT_LOG", "condition": "Record is within the supplied retention period",
+              "required_action": "RETAIN"},
+             {"rule_id": "rule_13", "data_category": "LEGAL_HOLD_RECORD", "condition": "A supplied legal hold is active",
+              "required_action": "RETAIN"}]
+
+    def resolve(self, rid, category, retention_until, audit_at="2026-09-15T12:00:00Z"):
+        from audit.model import EvidenceIndex, Observation
+        from audit.reconstruct import StateIndex, build_steps
+        o = Observation("evidence_07", "2026-09-10T00:00:00Z", None, vocab.system_for(rid), rid, category, vocab.RETAINED,
+                        frozenset({"user:user_1"}), retention_until=retention_until)
+        rs = StateIndex(EvidenceIndex(observations=[o]), [], self.RULES).resolve(rid, audit_at, "fallback_delete")
+        status, steps, _ = build_steps([rs])
+        return rs, status, [s["operation"] for s in steps]
+
+    def test_met_retains(self):
+        rs, status, ops = self.resolve("audit_record_1", "SECURITY_AUDIT_LOG", "2031-12-31T23:59:59Z")
+        self.assertEqual((rs.action, status, ops), ("RETAIN", "COMPLETE", ["VERIFY_RECORD_PRESENT"]))
+        self.assertTrue(rs.condition.startswith("rule_12 met"))
+
+    def test_not_met_deletes(self):
+        rs, status, ops = self.resolve("legal_hold_1", "LEGAL_HOLD_RECORD", "2026-06-30T00:00:00Z")
+        self.assertEqual((rs.action, rs.state, status), ("DELETE", vocab.PRESENT, "INCOMPLETE"))
+        self.assertEqual(ops, ["REPORT_REMAINING_RECORD", "DELETE_RECORD", "VERIFY_RECORD_ABSENT"])
+        self.assertTrue(rs.condition.startswith("rule_13 not met"))
+
+    def test_undeterminable_is_assumed_met_and_labelled(self):
+        rs, status, ops = self.resolve("audit_record_2", "SECURITY_AUDIT_LOG", None)
+        self.assertEqual((rs.action, ops), ("RETAIN", ["VERIFY_RECORD_PRESENT"]))
+        self.assertIn("undeterminable", rs.condition)
+        self.assertIn("assumed met", rs.condition)
+
+    def test_date_formats(self):
+        from audit.parsers.common import parse_time
+        self.assertEqual(parse_time("2033-12-31T23:59:59Z"), "2033-12-31T23:59:59Z")
+        self.assertEqual(parse_time("25 Aug 2027 04 03"), "2027-08-25T04:03:00Z")    # PDF text layer splits HH:MM
+        self.assertEqual(parse_time("26 Jul 2026"), "2026-07-26T00:00:00Z")
+        self.assertIsNone(parse_time("null"))

@@ -1,6 +1,6 @@
 # CONTRACT.md — Ghost Data Still Exists deletion-audit agent
 
-Status: **v0.6** (2026-10-24, Round 2 closed). Built: `code/contract.py`, `code/validate.py`, `code/evaluation/main.py`,
+Status: **v0.7** (2026-10-24, Round 3 closed). Built: `code/contract.py`, `code/validate.py`, `code/evaluation/main.py`,
 the deterministic core `code/audit/` + `code/main.py`, the provider-agnostic client `code/llm/` (not yet wired in),
 `code/tools/list_models.py`, unit tests `code/tests/`. Decisions D1–D15 are the user's.
 
@@ -164,7 +164,7 @@ corroboration (e.g. `CHECK_DATA_FLOW … remains enabled` agreeing with a connec
 | connector `enabled=false` / `DISABLED` | FLOW_DISABLED |
 | backup `restore_allowed=1` / `ACTIVE` / CHECK_RESTORE_ACCESS "can still be restored" | RESTORE_ALLOWED |
 | backup `restore_allowed=0` / `BLOCKED` | RESTORE_BLOCKED |
-| audit record present, `retention_until > T` | RETAINED |
+| audit record / legal hold present; rule_12/13 condition evaluated from the stated end date (D23, §19) | RETAINED, or PRESENT with action DELETE when the end date `<= T` |
 
 **Absence by omission (Round 1, rule (c), `--absence-rule fallback_delete`, default).** A snapshot that lists a collection and
 omits the resource proves ABSENT **only if** (1) there is no explicit observation of the resource `<= audit_at`, and (2) the
@@ -332,7 +332,7 @@ These cases reuse real dataset identities and evidence. Only the request row is 
 | E1 | `kwame-mensah@proton.me`, text "Please remove me from marketing lists only. Keep my account and orders." | `NOT_APPLICABLE, []` despite live marketing/account evidence for user_09 | deletion keyword + partial scope ≠ deletion |
 | E2 | `amara-okeke@proton.me`, Spanish: "No quiero eliminar mi cuenta; solo necesito una copia de mis datos." | `NOT_APPLICABLE, []` | negation in a non-English language |
 | E3 | `minjun.kim90@gmail.com` (historical email of user_12), Japanese correction request "電話番号を更新してください。アカウントは削除しないでください。" | `NOT_APPLICABLE, []`, and the subject must still resolve to user_12 in the decision log | historical identity + non-deletion |
-| E4 | clone of case_16 (`diya.k4436@outlook.com`) with `audit_at = 2026-09-21T09:59:59Z` (1 s before evidence_05) | `account_994` is **not** reported from evidence_05; state comes from earlier sources | inclusive cutoff and no post-T evidence |
+| E4 | clone of eval case_153 (`a.adeyemi9897@yahoo.com`) with `audit_at = 2026-08-02T06:59:59Z` (1 s before evidence_15). Originally a case_16 clone; moved off the holdout (D16) | no step cites evidence_15, and `account_8023` is not reported from it | inclusive cutoff and no post-T evidence |
 | E5 | `g.silva76@gmail.com`, deletion request, `audit_at = 2026-09-02T08:00:00Z` | `search_428` (user_13, evidence_09) is reported; `search_1874` (`g.silva76.jr@gmail.com`) appears in no step | near-miss decoy rejection + screenshot extraction |
 
 ## 14. Decision record for former open items
@@ -416,3 +416,28 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
 - **D13 (revised).** An observation vetoes a proposed link only when the identity it shows resolves to a different known user.
   An identity that resolves to no one is flagged in the run log and does not veto. Rationale: it matches L2's "belongs to
   someone else" rule, D22 makes an empty COMPLETE unprovable, and a missed record is the costly failure.
+
+## 19. Round 3 decisions (2026-10-24)
+- **Refuted hypothesis:** "hidden answers differentiate on expired retention/holds". Every retention/hold end date in the
+  participant data is in 2027–2034, after every audit_at, so condition evaluation changes 0 of the 518 outputs.
+- **D23:** rule_12 / rule_13 are evaluated. The latest end date (`retention_until` / `retained_until` / PDF "retain until")
+  captured `<= audit_at` decides: after audit_at → RETAIN; at or before → DELETE (the record becomes a remaining record).
+  With no date, the rule is assumed met, and this is an explicit branch logged per resource in the run log and decision log
+  (`rule_12 undeterminable: ... assumed met (D23)`). Eval: rule_12 99 met / 323 undeterminable; rule_13 5 met / 3
+  undeterminable. output.csv is byte-identical before and after.
+- **D24:** a tombstone's existence satisfies rule_15's "account is deleted", including the 6 tombstone cases with no linked account.
+- **D25:** rule_05 without visible shared context stays REDACT. Tuning gold check: all 7 resources the evidence labels
+  SUPPORT_MESSAGE are REDACT. The 3 deleted support_* resources are 2 explicit SUPPORT_ATTACHMENTs plus `support_002` (case_10), a
+  `legacy_contact_index` entry with no stated record type that our worker-hint rule already deletes. All 170 eval
+  SUPPORT_MESSAGE resources have an explicit category.
+- **D26:** free tier only. The final run is served entirely from the response cache (0 live calls). The 16 cache entries the
+  output depends on (5 intent batches gemini-2.5-flash, 11 screenshots gemini-3.5-flash-lite) all store token counts, and the
+  totals equal the original call log (19,480/29,246 and 15,965/8,322 tokens, created 2026-10-24T13:58–14:01Z). No prompt change
+  that invalidates the cache is made unless it has a non-zero impact and fits the remaining quota.
+- **Owner-column gap (known limitation, not fixed per D26):** the screenshot model *does* read the Owner column (attributes);
+  `vision.record_identifiers` ignores attribute emails. A zero-call replay that reads them changes 0 eval and 0 sample outputs:
+  `export_1260` (ingrid.dahl@outlook.com, user_18) already reaches cases 33 and 52, and the other three owners are staff
+  addresses that match no user.
+- **Proposed, not implemented (C):** request scoping. When a subject has an earlier deletion request, a resource whose every
+  observation predates that request's audit_at belongs to the earlier request. It drops only `account_6523` from case_17 (the
+  1 tuning extra) and changes 0 eval outputs.

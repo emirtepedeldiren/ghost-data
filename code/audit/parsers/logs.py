@@ -19,7 +19,7 @@ from pathlib import Path
 
 from audit import vocab
 from audit.model import Observation
-from audit.parsers.common import record_state, resource_ids_in, truthy, unit_identifiers
+from audit.parsers.common import record_state, resource_ids_in, retention_end, truthy, unit_identifiers
 
 KV = re.compile(r'(\w+)=("((?:[^"\\]|\\.)*)"|\S+)')
 TS = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) (.*)$")
@@ -152,6 +152,7 @@ def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names:
                 category=category, observed_state=state, identifiers_present=idents,
                 linked_resources=frozenset(linked - {rid}), named_system=named,
                 locator=f"{path.name}:{n}", unit_kind=f"log:{dialect}:{event}",
+                retention_until=next((t for f in all_fields if f.get("resource_id") == rid for t in [retention_end(f)] if t), None),
             ))
     return observations, [], warnings
 

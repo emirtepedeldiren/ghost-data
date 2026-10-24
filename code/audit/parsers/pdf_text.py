@@ -5,12 +5,13 @@ owns the document (manifest `origin`), with the identifiers printed in the same 
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from audit import vocab
 from audit.identity import extract_identifiers
 from audit.model import Observation
-from audit.parsers.common import resource_ids_in
+from audit.parsers.common import parse_time, resource_ids_in
 
 ORIGIN_CATEGORY_HINT = {
     # document kind -> category of the resources it shows (the document itself is the evidence)
@@ -24,6 +25,13 @@ def extract_text(path: Path) -> str:
 
     reader = PdfReader(str(path))
     return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+def _retain_until(text: str, rid: str) -> str | None:
+    """'retain until 25 Aug 2027 04\n03 UTC' printed after the resource id in the same document (D23)."""
+    i = text.find(rid)
+    m = re.search(r"retain until\s+(\d{1,2} [A-Za-z]{3} \d{4}(?:\s+\d{2}\s+\d{2})?)", text[i:i + 800], re.I) if i >= 0 else None
+    return parse_time(" ".join(m.group(1).split())) if m else None
 
 
 def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str]):
@@ -46,6 +54,6 @@ def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names:
             file_id=file_id, captured_at=captured_at, line_time=None, system_id=system, resource_id=rid,
             category=category, observed_state=state, identifiers_present=idents,
             linked_resources=frozenset(rids - {rid}), named_system=origin,
-            locator=f"{path.name}", unit_kind="pdf:document",
+            locator=f"{path.name}", unit_kind="pdf:document", retention_until=_retain_until(text, rid),
         ))
     return observations, [], []

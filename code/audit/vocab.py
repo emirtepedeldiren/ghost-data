@@ -111,6 +111,9 @@ RESULT_STATE = {
 }
 
 RETAINED_CATEGORIES = frozenset({"SECURITY_AUDIT_LOG", "LEGAL_HOLD_RECORD"})
+# D23: categories whose RETAIN rule is time-bound (rule_12 "within the supplied retention period",
+# rule_13 "a supplied legal hold is active"). Not met -> DELETE.
+TIME_BOUND_RETAIN = RETAINED_CATEGORIES
 
 
 def state_from_result(category: str | None, result: str) -> str | None:

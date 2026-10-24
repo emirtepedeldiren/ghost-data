@@ -66,6 +66,12 @@ def run(requests_path: Path, output_path: Path, dataset_dir: Path, timing_links:
     classifier = intent_mod.IntentClassifier(llm_client)
     for line in classifier.prepare(r["request_text"] for r in ds.all_requests()):
         log(line)
+    # Texts outside the dataset (e.g. custom evaluation cases) get their own batches, so the dataset's cached
+    # batches keep their boundaries and stay valid.
+    extra = [r["request_text"] for r in requests if r["request_text"] not in classifier.results]
+    if extra and use_llm:
+        for line in classifier.prepare(extra):
+            log(f"extra texts: {line}")
     for line in classifier.disagreements(ds.all_requests()):
         log(line)
     log(f"intent: {'LLM ' + classifier.client.models['intent'] + ' (cached)' if use_llm else intent_mod.TEMPORARY_FALLBACK_LABEL}")
@@ -128,6 +134,9 @@ def run(requests_path: Path, output_path: Path, dataset_dir: Path, timing_links:
                 continue
             rs.linked_by_evidence = any(v.startswith("identifier") and not v.startswith("identifier_post_audit_unit")
                                         for v in vias)
+            if rs.condition and " met:" not in rs.condition:
+                log(f"{cid}: condition {rid}: {rs.condition}")   # D23: undeterminable / not met are explicit
+                stats["condition_" + rs.condition.split(":")[0].split(" ", 1)[1].replace(" ", "_")] += 1
             resolved.append(rs)
         status, steps, notes = build_steps(resolved, verify_unobserved)
         if not steps:
@@ -138,6 +147,7 @@ def run(requests_path: Path, output_path: Path, dataset_dir: Path, timing_links:
             "resource_id": rs.resource_id, "system_id": rs.system_id, "links": sorted(via_by_rid[rs.resource_id]),
             "state": rs.state, "evidence_id": rs.evidence_id, "state_source": rs.source,
             "category": rs.category, "category_source": rs.category_source, "action": rs.action, "notes": rs.notes,
+            "condition": rs.condition,
         } for rs in resolved]
         decision["skipped"] = notes
         decisions.append(decision)

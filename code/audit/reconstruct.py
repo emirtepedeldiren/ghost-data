@@ -23,6 +23,7 @@ class ResourceState:
     action: str | None              # DELETE / REDACT / ANONYMIZE / RETAIN / DISABLE_FLOW / BLOCK_RESTORE
     notes: list[str] = field(default_factory=list)
     linked_by_evidence: bool = False   # set by the caller: at least one link came from an evidence file
+    condition: str | None = None       # D23: how a conditional rule's condition was decided
 
 
 class StateIndex:
@@ -36,6 +37,7 @@ class StateIndex:
             if a["source_system"] == "deletion_worker":
                 self.worker_by_rid[a["resource_id"]].append(a)
         self.rule_action = {r["data_category"]: r["required_action"] for r in rules}
+        self.rule_id = {r["data_category"]: r["rule_id"] for r in rules}
         self._captured = {o.file_id: o.captured_at for o in index.observations}
         self._captured.update({c.file_id: c.captured_at for c in index.coverage})
 
@@ -80,6 +82,30 @@ class StateIndex:
         category, cat_src, hint = self.category(rid, audit_at)
         action = self.action_for(category, hint)
         all_obs = self.obs_by_rid.get(rid, [])
+        condition = None
+        if category in vocab.TIME_BOUND_RETAIN and action == "RETAIN":
+            action, condition = self.retention_condition(category, all_obs, audit_at)
+        rs = self._state(rid, audit_at, absence_rule, subject_identifiers, unblocked_backup_rule,
+                         category, cat_src, action, all_obs)
+        rs.condition = condition
+        if action == "DELETE" and rs.state == vocab.RETAINED:
+            rs.state = vocab.PRESENT   # D23: a record past its retention end is a remaining record
+        return rs
+
+    def retention_condition(self, category: str, all_obs: list[Observation], audit_at: str) -> tuple[str, str]:
+        """D23: evaluate rule_12 / rule_13 from the latest stated end date captured <= audit_at.
+        met -> RETAIN; not met -> DELETE; undeterminable -> RETAIN (assumed met), logged as such."""
+        rule = self.rule_id.get(category, "?")
+        dated = [o for o in all_obs if o.retention_until and o.captured_at <= audit_at]
+        if not dated:
+            return "RETAIN", f"{rule} undeterminable: no retention/hold end date <= audit_at; assumed met (D23)"
+        o = max(dated, key=lambda o: (o.captured_at, o.line_time or "", o.file_id))
+        if o.retention_until > audit_at:
+            return "RETAIN", f"{rule} met: end {o.retention_until} > audit_at ({o.file_id})"
+        return "DELETE", f"{rule} not met: end {o.retention_until} <= audit_at ({o.file_id}) -> DELETE"
+
+    def _state(self, rid, audit_at, absence_rule, subject_identifiers, unblocked_backup_rule,
+               category, cat_src, action, all_obs) -> ResourceState:
         named = [o.system_id for o in all_obs]
         system = max(sorted(set(named)), key=named.count) if named else vocab.system_for(rid)
         obs = [o for o in all_obs if o.observed_state and o.captured_at <= audit_at]

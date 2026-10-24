@@ -222,9 +222,26 @@ their screenshots, so "not found" is the correct reading for both.
 Winner: **gemini-3.5-flash-lite** (higher id recall, less noise, a quarter of the cost). Known gap: it does not read emails in an "Owner"
 column. The fix is a prompt change, left for a later round.
 
-## 5. Additional evaluation cases (TODO, Round 3)
-Planned E1–E5 (CONTRACT.md §13): three NOT_APPLICABLE variants (partial-scope keyword, negation in Spanish, historical email +
-Japanese correction), the inclusive cutoff (case_16 clone 1 s before evidence_05), and the near-miss decoy (`g.silva76.jr`).
+## 5. Additional evaluation cases (participant-made)
+Runnable: `python3 code/evaluation/custom_cases.py` (inputs, expected output and pass/fail are in the file; the pipeline runs
+unchanged on the synthetic rows). E1–E3 use new request texts, classified in their own cached intent batch: 1 live
+gemini-2.5-flash call (384 in / 667 out tokens), 0 on re-runs. E4 was moved from a case_16 clone (holdout, D16) to eval case_153.
+
+| Case | Request (synthetic row) | Expected | Actual | Result |
+|---|---|---|---|---|
+| E1 | kwame-mensah@proton.me: "Please remove me from marketing lists only. Keep my account and orders." | NOT_APPLICABLE, [] (marketing_001 is linked to this subject in case_63) | NOT_APPLICABLE, [] | PASS |
+| E2 | amara-okeke@proton.me: "No quiero eliminar mi cuenta; solo necesito una copia de mis datos." | NOT_APPLICABLE, [] | NOT_APPLICABLE, [] | PASS |
+| E3 | minjun.kim90@gmail.com (historical email of user_12): "電話番号を更新してください。アカウントは削除しないでください。" | NOT_APPLICABLE, []; the email resolves to user_12 (historical) | NOT_APPLICABLE, []; user_12 historical | PASS |
+| E4 | case_153 with audit_at 2026-08-02T06:59:59Z, 1 s before evidence_15 | no step cites evidence_15; account_8023 not reported from it (the unmodified case_153 reports it from evidence_15) | COMPLETE, 0 steps | PASS* |
+| E5 | g.silva76@gmail.com (case_35 row) | search_428 reported from screenshot evidence_09; decoy search_1874 (g.silva76.jr) in no step | INCOMPLETE; REPORT_REMAINING_RECORD search_428 (evidence_09); no search_1874 | PASS |
+
+\* E4 passes its cutoff check, but its output is an **empty COMPLETE**. Once evidence_15 is excluded, nothing captured `<= audit_at` observes the
+subject. None of the 518 eval rows has this pattern (validator), but the pipeline has no rule for a deletion subject with zero observable
+records. Open decision for the user.
+
+### 5.1 Refuted hypothesis (Round 3)
+"The hidden answers differentiate on expired retention periods or legal holds." Every end date in the participant data is in
+2027–2034, after every audit_at (§3.7). The conditions are now evaluated (D23), and the output is byte-identical.
 
 ## 6. Token usage so far (development, not the final run)
 | Model | Task | API calls | Input tokens | Output tokens | Est. cost (list price) |
@@ -233,6 +250,9 @@ Japanese correction), the inclusive cutoff (case_16 clone 1 s before evidence_05
 | gemini-2.5-flash | intent (5 batches) | 5 | 19,480 | 29,246 | $0.079 |
 | gemini-2.5-flash | vision comparison | 11 | 6,919 | 37,125 | $0.095 |
 | gemini-3.5-flash-lite | vision | 11 | 15,965 | 8,322 | $0.026 |
-| **total** | | **43** | 47,677 | 78,742 | **$0.219** |
+| gemini-2.5-flash | intent, custom cases E1–E3 (1 batch) | 1 | 384 | 667 | $0.002 |
+| **total** | | **44** | 48,061 | 79,409 | **$0.221** |
 
-The final full-dataset run is reported in `usage_report.md`. With a warm cache it makes 0 API calls.
+Only the 5 intent batches (gemini-2.5-flash) and the 11 screenshots (gemini-3.5-flash-lite) feed `output.csv`. D26: the final run is
+served entirely from their cached responses (created 2026-10-24T13:58–14:01Z, token counts stored per entry and equal to the call log);
+`usage_report.md` will report those 16 calls.
