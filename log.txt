@@ -440,3 +440,44 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-24T15:11:35Z] Phase 4: freeze frozen_v1 (cache-only), reports, README, clean install, zip
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Round 3 accepted. Code now matches CONTRACT §6, the cache covers every response the output depends on, and the Owner gap is zero-impact. Remaining work is deterministic.
+
+QUOTA — DEADLINE: submission closes Oct 25, 15:30 Istanbul (12:30 UTC). With the Owner gap skipped, no live calls are needed at all. Final output comes from the cache (D26). No live calls from now on unless I explicitly approve one.
+
+DECISION D27 (E4 pattern, subject with no observable records): keep the current output, but make it an explicit branch: logged as NO_OBSERVABLE_RECORDS in the run log, a validator warning, and a known limitation in evaluation_report.md. RATIONALE: 0 of 518 rows hit it, and the schema offers no status that is both honest and provable here.
+
+DECISION D28 (account_6523 request scoping): rejected. RATIONALE: it fixes one tuning step and changes 0 eval outputs — a rule whose only effect is matching a sample is fitting, not generalizing. Documented as a known extra step.
+
+DECISION D29 (considered and rejected): a deterministic tie-break that assigns the 7 symmetric twin resources to one candidate case. It could raise sequence accuracy by ~50% of those cases, but an audit tool that attributes another person's data to a requester is wrong by design. They stay unlinked and are listed in evaluation_report.md.
+
+PHASE 4 — freeze and package:
+1. Frozen run: write code/config/frozen_v1 (prompts, model IDs, thresholds, flags such as --timing-links) and log its hash. Produce output.csv from it, cache only.
+2. code/evaluation/usage_report.md: the 17 cached calls behind the final output plus E1–E3 (keep the eval-only call separate from the production totals). Per-model and overall: provider, model, calls, input/output tokens, total and average tokens per request, list-price cost total and per request. State clearly that the final run was served from cache and cite the call-log timestamps.
+3. code/evaluation/evaluation_report.md, complete per the README: case-level status accuracy, step-level and field-level accuracy, sequence accuracy — tuning and holdout separately with the D16 contamination note; E1–E5; the A/B tables (timing links, snapshot rules, citation rules, vision model comparison, LLM vs keyword intent); failures found and improvements made, round by round, with before → after metrics; known limitations; rejected decisions (D28, D29).
+4. README.md: one-command setup and run, architecture diagram (text), where the LLM is used and why only there, key decisions D1–D29 in short form with pointers to CONTRACT.md.
+5. Clean-install test: copy the repo to a temp folder, follow only the README, run, diff output.csv against the frozen run — must be identical.
+6. Packaging dry run with the official zip command from the README: list the archive contents; confirm no dataset/, .env, .venv, __pycache__, nested archives, or secrets; confirm both reports are inside code/evaluation/; confirm prompts live in .py/.md files, not only .json.
+
+ACCEPTANCE: validator passes on all 518; clean-install diff empty; zip listing shown; both reports render as readable Markdown. Commit and push; merge the branch into main.
+
+Agent Response Summary:
+Froze code/config/frozen_v1.toml (sha256 23f37566...): models, prompt hashes, L2 thresholds, batch size and flags. main.py verifies it against the code and runs cache-only; a miss raises CacheMiss and aborts, and no key is needed. The 17 needed responses (16 production, 1 evaluation) moved to the tracked code/llm_cache/ with their original call-log rows, and dev artifacts moved to the gitignored .work/. The frozen output is byte-identical to Round 3 (sha256 774aa9ca...) with 0 live calls. D27 is an explicit NO_OBSERVABLE_RECORDS branch plus validator warning; D28/D29 are recorded as rejected. usage_report.md (generated), the complete evaluation_report.md and the solution README were written; the clean clone following only the README reproduced output.csv with an empty diff. code.zip (71 entries) has no dataset, .env, venv, pycache, nested archive or secret, and both reports render.
+
+Actions:
+* Created code/config/frozen_v1.toml, code/llm_cache/ (17 responses + calls.jsonl), code/tools/usage_report.py, code/evaluation/usage_report.md
+* Edited code/main.py (frozen config, cache-only, D27), code/llm/__init__.py (CacheMiss), code/validate.py, code/contract.py (WORK_DIR), code/config.toml, code/requirements.txt, evaluation tools, tests (+2)
+* Rewrote README.md and code/evaluation/evaluation_report.md; CONTRACT.md v1.0 (section 20); moved code/cache/ to .work/
+* Ran frozen run, no-LLM A/B, samples scoring, custom cases, validator, unit tests; clean clone + venv + run + diff; official zip command + listing + secret scan
+* git commit and push; merged phase0-contract-and-eval into main and pushed main; no live API calls this turn
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
