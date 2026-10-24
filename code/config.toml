@@ -4,13 +4,13 @@
 
 [llm]
 provider = "gemini"              # "gemini" | "anthropic"
-cache_dir = "code/cache/llm"     # cached responses, keyed by provider+model+task+inputs
-usage_log = "code/cache/llm_calls.jsonl"
+cache_dir = "code/llm_cache"     # cached responses, keyed by provider+model+task+inputs (tracked: the frozen run reads only these)
+usage_log = ".work/llm_calls.jsonl"   # per-call log incl. cache hits (dev only); original API calls: code/llm_cache/calls.jsonl
 
 [llm.models]
 # D17 approved gemini-3.8-flash for intent, but on 2026-10-24 it timed out on every request (also via the
 # gemini-flash-latest alias), and gemini-3.6-flash hit the free-tier quota (20 requests/day/model) after 16 calls.
-# SUBSTITUTE pending user decision (enable billing, or accept): gemini-2.5-flash, batched (80 texts per call).
+# D18: gemini-2.5-flash, batched (80 texts per call).
 intent = "gemini-2.5-flash"
 # Set after the D17 screenshot comparison (gemini-3.5-flash-lite vs gemini-2.5-flash).
 vision = "gemini-3.5-flash-lite"

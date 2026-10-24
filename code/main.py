@@ -1,15 +1,18 @@
 """Ghost Data Still Exists - deletion-audit agent (entry point).
 
 Usage:
-    python3 code/main.py                                   # 518 eval requests -> ./output.csv
-    python3 code/main.py --requests dataset/sample_deletion_requests.csv --output code/cache/sample_predictions.csv
-Options (defaults are the approved decisions; each flag switches one off for measurement):
+    python3 code/main.py                                   # frozen run (code/config/frozen_v1.toml): 518 eval requests -> ./output.csv
+    python3 code/main.py --requests dataset/sample_deletion_requests.csv --output .work/sample_predictions.csv
+The frozen config pins models, prompt hashes, thresholds and flags, and runs cache-only (no API calls, no key needed).
+Options (each flag switches one approved decision off, for measurement; the run log records the deviation):
     --no-timing-links       disable D20 (L2 worker-schedule linker, global unique assignment)
     --no-post-audit-links   disable D12 (identity links from files captured after audit_at)
     --no-post-audit-unit-links  disable D21 (D12 links from units whose own timestamp is after audit_at)
     --no-unblocked-backup-rule  disable D22 (backup holding subject data, no block observed => restore risk)
     --strict-catalog-veto   original D13 instead of revised D13 (any foreign identity vetoes a catalog link)
-    --run-name NAME         run log and decision log go to code/cache/runs/NAME/
+    --run-name NAME         run log and decision log go to .work/runs/NAME/
+    --config PATH           frozen config (default code/config/frozen_v1.toml)
+    --live                  allow live API calls on cache misses (development only; never used for the frozen output)
 
 Pipeline (CONTRACT.md §4): intent -> identity -> evidence index -> linking -> state at audit_at ->
 policy -> steps (code/contract.py ordering) -> CSV.
@@ -33,16 +36,19 @@ from audit.identity import IdentityResolver  # noqa: E402
 from audit.linking import OwnershipIndex, TimingLinker, catalog_links, explicit_links  # noqa: E402
 from audit.parsers import build_index  # noqa: E402
 from audit.reconstruct import StateIndex, build_steps  # noqa: E402
-from llm import LLMClient  # noqa: E402
-from contract import DATASET_DIR, OUTPUT_HEADER, REPO_ROOT, case_sort_key, dumps_steps  # noqa: E402
+from llm import CONFIG_PATH, LLMClient  # noqa: E402
+from contract import DATASET_DIR, OUTPUT_HEADER, REPO_ROOT, WORK_DIR, case_sort_key, dumps_steps  # noqa: E402
+
+FROZEN_DEFAULT = CODE_DIR / "config" / "frozen_v1.toml"
 
 
 def run(requests_path: Path, output_path: Path, dataset_dir: Path, timing_links: bool,
         post_audit_links: bool, run_dir: Path, absence_rule: str = "fallback_delete", verify_unobserved: bool = True,
         use_llm: bool = True, post_audit_unit_links: bool = True, unblocked_backup_rule: bool = True,
-        strict_catalog_veto: bool = False) -> dict:
+        strict_catalog_veto: bool = False, llm_config: Path = CONFIG_PATH, cache_only: bool | None = None,
+        header: tuple[str, ...] = ()) -> dict:
     run_dir.mkdir(parents=True, exist_ok=True)
-    log_lines: list[str] = []
+    log_lines: list[str] = list(header)
 
     def log(msg: str) -> None:
         log_lines.append(msg)
@@ -50,7 +56,7 @@ def run(requests_path: Path, output_path: Path, dataset_dir: Path, timing_links:
     ds = Dataset.load(dataset_dir)
     requests = read_csv(requests_path)
     resolver = IdentityResolver(ds.identities, ds.audit_log)
-    llm_client = LLMClient() if use_llm else None
+    llm_client = LLMClient(llm_config, cache_only) if use_llm else None
     index = build_index(ds.manifest, dataset_dir, resolver.unique_names, llm_client)
     states = StateIndex(index, ds.activity, ds.rules)
     ownership = OwnershipIndex(index.observations, resolver)
@@ -97,8 +103,10 @@ def run(requests_path: Path, output_path: Path, dataset_dir: Path, timing_links:
             continue
         subject, how = resolver.resolve(req["email"])
         if subject is None:
-            log(f"{cid}: identity not resolved ({how})")
+            log(f"{cid}: NO_OBSERVABLE_RECORDS (D27): identity not resolved ({how})")
             decision["identity"] = how
+            decision["no_observable_records"] = True
+            stats["NO_OBSERVABLE_RECORDS"] += 1
             rows.append((cid, "COMPLETE", "[]"))
             stats["unresolved_identity"] += 1
             decisions.append(decision)
@@ -140,8 +148,11 @@ def run(requests_path: Path, output_path: Path, dataset_dir: Path, timing_links:
             resolved.append(rs)
         status, steps, notes = build_steps(resolved, verify_unobserved)
         if not steps:
-            log(f"{cid}: no evidence-backed step for {len(resolved)} linked resource(s)")
-            stats["no_steps"] += 1
+            # D27: explicit branch. The schema has no status that is both honest and provable for a subject with no
+            # observable record <= audit_at; the row stays COMPLETE with [], logged and flagged by the validator.
+            log(f"{cid}: NO_OBSERVABLE_RECORDS (D27): no evidence-backed step for {len(resolved)} linked resource(s)")
+            decision["no_observable_records"] = True
+            stats["NO_OBSERVABLE_RECORDS"] += 1
         stats[status] += 1
         decision["resources"] = [{
             "resource_id": rs.resource_id, "system_id": rs.system_id, "links": sorted(via_by_rid[rs.resource_id]),
@@ -171,26 +182,70 @@ def run(requests_path: Path, output_path: Path, dataset_dir: Path, timing_links:
     return dict(stats)
 
 
+def load_frozen(path: Path) -> tuple[dict, str]:
+    """Read a frozen config and verify it against the code. Returns (config, sha256 of the file)."""
+    import hashlib
+    import tomllib
+
+    from audit import linking
+
+    raw = path.read_bytes()
+    cfg = tomllib.loads(raw.decode("utf-8"))
+    problems = []
+    for name, spec in cfg.get("prompts", {}).items():
+        actual = hashlib.sha256((REPO_ROOT / spec["path"]).read_bytes()).hexdigest()
+        if actual != spec["sha256"]:
+            problems.append(f"prompt {name} ({spec['path']}) sha256 {actual[:12]} != frozen {spec['sha256'][:12]}")
+    th = cfg.get("thresholds", {})
+    checks = {"account_window_min": list(linking.ACCOUNT_WINDOW), "followup_window_min": list(linking.FOLLOWUP_WINDOW),
+              "intent_batch_size": intent_mod.BATCH_SIZE,
+              "result_ok": {k: sorted(v) for k, v in linking.RESULT_OK.items()}}
+    for k, actual in checks.items():
+        if k in th and th[k] != actual:
+            problems.append(f"threshold {k}: code {actual} != frozen {th[k]}")
+    if problems:
+        raise SystemExit(f"frozen config {path} does not match the code:\n  " + "\n  ".join(problems))
+    return cfg, hashlib.sha256(raw).hexdigest()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--requests", type=Path, default=DATASET_DIR / "deletion_requests.csv")
     ap.add_argument("--output", type=Path, default=REPO_ROOT / "output.csv")
     ap.add_argument("--dataset", type=Path, default=DATASET_DIR)
+    ap.add_argument("--config", type=Path, default=FROZEN_DEFAULT)
+    ap.add_argument("--live", action="store_true")
     ap.add_argument("--no-timing-links", action="store_true")
     ap.add_argument("--no-post-audit-links", action="store_true")
     ap.add_argument("--no-post-audit-unit-links", action="store_true")
     ap.add_argument("--no-unblocked-backup-rule", action="store_true")
     ap.add_argument("--strict-catalog-veto", action="store_true")
     ap.add_argument("--run-name", default="latest")
-    ap.add_argument("--absence-rule", choices=("scope", "fallback", "fallback_delete", "override"), default="fallback_delete")
+    ap.add_argument("--absence-rule", choices=("scope", "fallback", "fallback_delete", "override"), default=None)
     ap.add_argument("--no-verify-unobserved", action="store_true", help="disable fix 2")
     ap.add_argument("--no-llm", action="store_true", help="keyword intent fallback instead of the cached LLM")
     args = ap.parse_args()
-    stats = run(args.requests.resolve(), args.output.resolve(), args.dataset.resolve(), not args.no_timing_links,
-                not args.no_post_audit_links, CODE_DIR / "cache" / "runs" / args.run_name,
-                args.absence_rule, not args.no_verify_unobserved, not args.no_llm,
-                not args.no_post_audit_unit_links, not args.no_unblocked_backup_rule, args.strict_catalog_veto)
-    print(f"{args.output}: {stats}")
+    cfg, cfg_hash = load_frozen(args.config.resolve())
+    pl = cfg["pipeline"]
+    flags = {
+        "timing_links": pl["timing_links"] and not args.no_timing_links,
+        "post_audit_links": pl["post_audit_links"] and not args.no_post_audit_links,
+        "post_audit_unit_links": pl["post_audit_unit_links"] and not args.no_post_audit_unit_links,
+        "unblocked_backup_rule": pl["unblocked_backup_rule"] and not args.no_unblocked_backup_rule,
+        "strict_catalog_veto": pl["strict_catalog_veto"] or args.strict_catalog_veto,
+        "absence_rule": args.absence_rule or pl["absence_rule"],
+        "verify_unobserved": pl["verify_unobserved"] and not args.no_verify_unobserved,
+        "use_llm": pl["use_llm"] and not args.no_llm,
+    }
+    deviations = [f"{k}={v}" for k, v in flags.items() if v != pl[k]] + (["live API calls allowed"] if args.live else [])
+    header = (f"config {args.config.name} sha256={cfg_hash}",
+              "frozen run: cache-only" if not deviations else f"DEVIATES from frozen config: {', '.join(deviations)}")
+    stats = run(args.requests.resolve(), args.output.resolve(), args.dataset.resolve(), flags["timing_links"],
+                flags["post_audit_links"], WORK_DIR / "runs" / args.run_name,
+                flags["absence_rule"], flags["verify_unobserved"], flags["use_llm"],
+                flags["post_audit_unit_links"], flags["unblocked_backup_rule"], flags["strict_catalog_veto"],
+                llm_config=args.config.resolve(), cache_only=not args.live, header=header)
+    print(f"{header[0]}\n{header[1]}\n{args.output}: {stats}")
     return 0
 
 

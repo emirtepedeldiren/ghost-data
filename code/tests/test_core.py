@@ -227,3 +227,22 @@ class RetentionConditionD23(unittest.TestCase):
         self.assertEqual(parse_time("25 Aug 2027 04 03"), "2027-08-25T04:03:00Z")    # PDF text layer splits HH:MM
         self.assertEqual(parse_time("26 Jul 2026"), "2026-07-26T00:00:00Z")
         self.assertIsNone(parse_time("null"))
+
+
+class FrozenRun(unittest.TestCase):
+    """D26: the frozen run is cache-only and its config is verified against the code."""
+
+    def test_cache_miss_aborts_instead_of_calling(self):
+        import tempfile
+        from llm import CacheMiss, LLMClient
+        with tempfile.TemporaryDirectory() as d:
+            c = LLMClient(cache_only=True)
+            c.cache_dir = Path(d)
+            with self.assertRaises(CacheMiss):
+                c.generate("intent", "never cached", system="x")
+
+    def test_shipped_frozen_config_matches_code(self):
+        import main
+        cfg, sha = main.load_frozen(main.FROZEN_DEFAULT)
+        self.assertTrue(cfg["llm"]["cache_only"])
+        self.assertEqual(len(sha), 64)

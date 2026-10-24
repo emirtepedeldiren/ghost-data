@@ -57,8 +57,8 @@ def check_steps(case_id: str, status: str, steps: list, audit_at: str | None,
             bad("not_applicable_must_be_empty", f"NOT_APPLICABLE with {len(steps)} steps")
         return
     if status in ("COMPLETE", "INCOMPLETE") and not steps:
-        # Not forbidden by problem_statement.md, but an unproven COMPLETE is almost certainly wrong.
-        problems["WARN:empty_steps"].append(f"{case_id}: {status} with no steps (no evidence-backed resource found)")
+        # D27: not forbidden by problem_statement.md, but a COMPLETE without proof is a known limitation (NO_OBSERVABLE_RECORDS).
+        problems["WARN:NO_OBSERVABLE_RECORDS"].append(f"{case_id}: {status} with no steps (no observable record <= audit_at, D27)")
         return
 
     for i, step in enumerate(steps, 1):

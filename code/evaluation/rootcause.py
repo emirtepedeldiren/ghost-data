@@ -1,6 +1,6 @@
 """Attribute every missing / extra step of a sample run to a root cause (tuning split only, D16).
 
-Usage: python3 code/evaluation/rootcause.py --pred code/cache/X.csv --decisions code/cache/runs/X/decisions.jsonl [--cases]
+Usage: python3 code/evaluation/rootcause.py --pred .work/X.csv --decisions .work/runs/X/decisions.jsonl [--cases]
 Reads only participant data + sample_output.csv (gold) + the run's own decision log.
 """
 from __future__ import annotations

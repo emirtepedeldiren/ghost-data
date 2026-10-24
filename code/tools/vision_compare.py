@@ -56,7 +56,7 @@ def main(models: list[str]) -> int:
                 totals["identity_agrees"] += row["identity_agrees"]
             row["extracted"] = [{k: r[k] for k in ("resource_id", "user_id", "name", "email", "status")} for r in recs]
             rows.append(row)
-        usage = [json.loads(l) for l in (CODE / "cache" / "llm_calls.jsonl").open() if json.loads(l)["model"] == model and json.loads(l)["task"] == "vision"]
+        usage = [json.loads(l) for l in (CODE.parent / ".work" / "llm_calls.jsonl").open() if json.loads(l)["model"] == model and json.loads(l)["task"] == "vision"]
         totals["input_tokens"] = sum(u["input_tokens"] for u in usage)
         totals["output_tokens"] = sum(u["output_tokens"] for u in usage)
         report[model] = {"totals": totals, "files": rows}
@@ -64,7 +64,7 @@ def main(models: list[str]) -> int:
         for row in rows:
             print(f"   {row['file_id']} {row.get('file', '')[:34]:<34} found={row.get('resource_found')} agrees={row.get('identity_agrees')} "
                   f"records={row.get('records')} unparsed={row.get('unparsed') or row.get('error', '')}")
-    out = CODE / "cache" / "vision_compare.json"
+    out = CODE.parent / ".work" / "vision_compare.json"
     out.write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"written {out}")
     return 0

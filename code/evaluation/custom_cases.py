@@ -4,8 +4,8 @@ Each case is a synthetic request row over the real dataset (identities, evidence
 is hand-derived from participant data only. The pipeline runs unchanged on these rows (code/main.py run()).
 
 Usage: python3 code/evaluation/custom_cases.py
-Intent: E1-E3 use new request texts. They are classified by the LLM in their own cached batch (main.py "extra
-texts"), so the dataset's cached batches are untouched. E4/E5 reuse existing eval texts (cache hits).
+Intent: E1-E3 use new request texts. They were classified by the LLM once, in their own batch (main.py "extra texts"),
+so the dataset's cached batches are untouched; that response is in code/llm_cache/. Runs use the frozen config, cache-only.
 """
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from contract import DATASET_DIR, REPO_ROOT  # noqa: E402
+from contract import DATASET_DIR, WORK_DIR  # noqa: E402
 
-CACHE = REPO_ROOT / "code" / "cache"
+CACHE = WORK_DIR
 FIELDS = ["case_id", "email", "requested_at", "reported_status", "reported_at", "audit_at", "request_text"]
 
 
@@ -80,7 +80,12 @@ def main() -> int:
         w.writerows(c["row"] for c in cs)
     out_path = CACHE / "custom" / "output.csv"
     run_dir = CACHE / "runs" / "custom"
-    pipeline.run(req_path, out_path, DATASET_DIR, True, True, run_dir)
+    cfg, cfg_hash = pipeline.load_frozen(pipeline.FROZEN_DEFAULT)   # same frozen config as the production run, cache-only
+    pl = cfg["pipeline"]
+    pipeline.run(req_path, out_path, DATASET_DIR, pl["timing_links"], pl["post_audit_links"], run_dir, pl["absence_rule"],
+                 pl["verify_unobserved"], pl["use_llm"], pl["post_audit_unit_links"], pl["unblocked_backup_rule"],
+                 pl["strict_catalog_veto"], llm_config=pipeline.FROZEN_DEFAULT, cache_only=True,
+                 header=(f"custom cases, config frozen_v1 sha256={cfg_hash}",))
     with out_path.open(newline="", encoding="utf-8") as f:
         out = {r["case_id"]: r for r in csv.DictReader(f)}
     dec = {json.loads(l)["case_id"]: json.loads(l) for l in (run_dir / "decisions.jsonl").open(encoding="utf-8")}

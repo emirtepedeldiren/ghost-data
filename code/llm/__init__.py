@@ -4,8 +4,8 @@ One interface, `LLMClient.generate(task, prompt, images=None, json_schema=None)`
 for each task come from code/config.toml. Every call is cached on disk and logged with token usage
 (for evaluation/usage_report.md). Keys are read from the environment / .env only and are never logged.
 
-Status 2026-10-24: implemented, NOT yet wired into the pipeline and NOT yet called against the live API;
-the model choice awaits user approval.
+Cache-only mode (D26, frozen runs): a cache miss raises CacheMiss and aborts the run instead of calling the API,
+so the frozen output can never silently depend on a new live call or on a keyword fallback.
 """
 from __future__ import annotations
 
@@ -27,6 +27,10 @@ CONFIG_PATH = REPO_ROOT / "code" / "config.toml"
 
 class LLMError(RuntimeError):
     """Raised when a provider call fails after retries. Callers fall back (e.g. keyword intent)."""
+
+
+class CacheMiss(RuntimeError):
+    """Cache-only mode found no cached response. Deliberately not an LLMError, so no caller falls back."""
 
 
 @dataclass
@@ -150,9 +154,10 @@ PROVIDERS = {"gemini": GeminiProvider, "anthropic": AnthropicProvider}
 
 
 class LLMClient:
-    def __init__(self, config_path: Path = CONFIG_PATH):
+    def __init__(self, config_path: Path = CONFIG_PATH, cache_only: bool | None = None):
         load_dotenv()
         cfg = tomllib.loads(config_path.read_text(encoding="utf-8"))["llm"]
+        self.cache_only = cfg.get("cache_only", False) if cache_only is None else cache_only
         self.provider_name = cfg["provider"]
         self.models: dict[str, str] = cfg["models"]
         self.prices: dict = cfg.get("prices", {})
@@ -189,6 +194,8 @@ class LLMClient:
         model = self.models[task]
         key = self._cache_key(model, task, system, prompt, images, json_schema)
         cache_file = self.cache_dir / f"{key}.json"
+        if not cache_file.exists() and self.cache_only:
+            raise CacheMiss(f"cache-only mode: no cached {task} response for {model} ({key[:12]}...) in {self.cache_dir}")
         if cache_file.exists():
             c = json.loads(cache_file.read_text(encoding="utf-8"))
             self._log({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "task": task, "provider": self.provider_name,

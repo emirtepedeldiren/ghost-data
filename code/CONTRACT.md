@@ -1,6 +1,6 @@
 # CONTRACT.md — Ghost Data Still Exists deletion-audit agent
 
-Status: **v0.7** (2026-10-24, Round 3 closed). Built: `code/contract.py`, `code/validate.py`, `code/evaluation/main.py`,
+Status: **v1.0, frozen** (2026-10-24, Phase 4: `code/config/frozen_v1.toml`). Built: `code/contract.py`, `code/validate.py`, `code/evaluation/main.py`,
 the deterministic core `code/audit/` + `code/main.py`, the provider-agnostic client `code/llm/` (not yet wired in),
 `code/tools/list_models.py`, unit tests `code/tests/`. Decisions D1–D15 are the user's.
 
@@ -300,8 +300,8 @@ vision mismatch, post-T file skipped). This feeds the evaluation report and the 
 5. Every cited evidence_id exists in the manifest / activity / audit log and has `observed_at <= audit_at`.
 6. There is no remediation without a matching finding, and every remediated resource has a matching verification.
 7. Regression: the 32 samples are scored by `code/evaluation/main.py` (metrics in §12).
-8. `COMPLETE`/`INCOMPLETE` with an empty array is reported as a **warning** (`empty_steps`), not a failure: the problem
-   statement does not forbid it, but an unproven COMPLETE is almost certainly wrong. The scorer still counts it as wrong.
+8. `COMPLETE`/`INCOMPLETE` with an empty array is reported as a **warning** (`NO_OBSERVABLE_RECORDS`, D27), not a failure: the
+   problem statement does not forbid it, but it is a known limitation. 0 of 518 eval rows hit it.
 Unit tests: `python3 -m unittest discover -s code/tests` (token boundaries incl. support_864 vs support_8642, identifier
 normalization, historical-email resolution, all six log dialects, ordering, intent fallback).
 
@@ -441,3 +441,17 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
 - **Proposed, not implemented (C):** request scoping. When a subject has an earlier deletion request, a resource whose every
   observation predates that request's audit_at belongs to the earlier request. It drops only `account_6523` from case_17 (the
   1 tuning extra) and changes 0 eval outputs.
+
+## 20. Phase 4 decisions and freeze (2026-10-24)
+- **D27:** a deletion subject with no observable record `<= audit_at` (or an unresolved identity) keeps COMPLETE with `[]`, but as an
+  explicit branch: `NO_OBSERVABLE_RECORDS` in the run log and decision log, and a validator warning. 0 of 518 eval rows hit it
+  (custom case E4 does). The schema offers no status that is both honest and provable here.
+- **D28 (rejected):** request scoping for `account_6523` (case_17). It fixes 1 tuning step and changes 0 eval outputs: fitting, not generalizing.
+- **D29 (rejected):** a deterministic tie-break that assigns interchangeable twin resources to one candidate request. An audit tool must not
+  attribute another person's data to a requester.
+- **Freeze:** `code/config/frozen_v1.toml` (sha256 `23f3756663ed21faee986f397344a1c43e7479dfe540764dc570fba87c1e6aa9`) pins the models, prompt
+  hashes, L2 thresholds, intent batch size and pipeline flags. `python3 code/main.py` loads it by default and aborts on any mismatch with
+  the code. The run is cache-only: the 17 needed responses (16 production, 1 evaluation) are committed in `code/llm_cache/` with their
+  original call-log rows in `code/llm_cache/calls.jsonl`. A cache miss raises `CacheMiss` and aborts the run; no key is needed.
+  Output sha256 `774aa9ca3e0073383fc9251ce17217b684c4b06161c5385c712945a420d1cb1f`.
+- Dev artifacts (run logs, decision logs, scratch predictions, the per-call log) live in the gitignored `.work/`, outside `code/`.
