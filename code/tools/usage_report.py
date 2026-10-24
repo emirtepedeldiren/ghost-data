@@ -75,7 +75,7 @@ def main() -> int:
         f"`{frozen['llm']['provider']}`).",
         "- **The final run was served entirely from the response cache: 0 live API calls** (D26, free tier). The run is cache-only: "
         "a cache miss aborts it, and no API key is needed.",
-        f"- The cached responses were produced by **{len(prod)} original API calls on 2026-10-24 between {ts[0]} and {ts[-1]}** "
+        f"- The cached responses were produced by **{len(prod)} original API calls made between {ts[0]} and {ts[-1]}** "
         "(call-log timestamps, UTC). The usage below is the usage of those calls, which is what the final output costs.",
         "- The LLM is used in exactly two places: request intent (5 batched calls classify the 398 unique request texts of the eval "
         "and sample files, 80 per call) and screenshot transcription (1 call per PNG, 11 PNGs). Everything else is deterministic code.",
@@ -111,8 +111,9 @@ def main() -> int:
         "",
         "## Total project LLM spend (all API calls, list price)",
         "",
-        "Development calls did not contribute to `output.csv`: 16 on `gemini-3.6-flash` (unbatched intent, abandoned at the free-tier quota) "
-        "and 11 on `gemini-2.5-flash` (the screenshot model comparison, D17); rows in `code/llm_cache/dev_calls.jsonl`. Failed requests "
+        "Development calls did not contribute to `output.csv`: " + "; ".join(
+            f"{n} on `{m}` ({note})" for (m, note), n in collections.Counter((c["model"], c["note"]) for c in dev).items())
+        + ". Rows in `code/llm_cache/dev_calls.jsonl`. Failed requests "
         "(timeouts, HTTP 429) returned no token counts, so they cannot be costed here; on the free tier nothing was charged.",
         "",
         "| Purpose | Calls | Input tokens | Output tokens | Est. cost (USD) |",

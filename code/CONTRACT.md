@@ -452,7 +452,7 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
 - **D28 (rejected):** request scoping for `account_6523` (case_17). It fixes 1 tuning step and changes 0 eval outputs: fitting, not generalizing.
 - **D29 (rejected):** a deterministic tie-break that assigns interchangeable twin resources to one candidate request. An audit tool must not
   attribute another person's data to a requester.
-- **Freeze:** `code/config/frozen_v1.toml` (sha256 `58e1afb22468840b7d0f567291d1b684a6c1ab6cb4fa3270e528d2f566264604`) pins the models, prompt
+- **Freeze:** `code/config/frozen_v1.toml` (sha256 `1f39d309dbb8d6611cd987feb0c577b3417642c005b615fbfbbeef91242ca612`) pins the models, prompt
   hashes, L2 thresholds, intent batch size and pipeline flags. `python3 code/main.py` loads it by default and aborts on any mismatch with
   the code. The run is cache-only: the 17 needed responses (16 production, 1 evaluation) are committed in `code/llm_cache/` with their
   original call-log rows in `code/llm_cache/calls.jsonl`. A cache miss raises `CacheMiss` and aborts the run; no key is needed.
@@ -468,3 +468,11 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
   - The scan also found the screenshots' own ids used as examples in `code/prompts/vision_extract.md`. This is documented, and its fix
     is pending approval because it needs 11 live calls.
   - The docs were aligned with the code: full identity history, verification coverage, cache keys and paths.
+- **D31 (approved, pending execution):** remove dataset ids from prompts.
+  - `code/prompts/vision_extract.md` now describes id formats as patterns only. The superseded prompt is kept byte for byte in
+    `code/prompts/legacy/`, and `frozen_v1.toml` still points at it, because the cached screenshot responses are keyed by its text.
+  - `code/tools/refresh_vision.py` re-extracts the 11 screenshots after the 07:00 UTC quota reset (at most 12 live calls). If
+    `output.csv` is byte-identical, it switches the frozen config and the docs; otherwise it changes nothing.
+  - Fallback if the output differs and the change is not a clear improvement: revert the prompt, keep the old cache and keep the
+    limitation documented. The current `output.csv` stays the submission.
+  - Guarded by the `PromptLeaks` tests (the frozen-config check is skipped, visibly, until the refresh).

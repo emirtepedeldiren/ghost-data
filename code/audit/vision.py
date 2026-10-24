@@ -40,9 +40,15 @@ VISION_SCHEMA = {
 }
 
 
+def prompt_text(client) -> str:
+    """The vision system prompt: the file named by the client's config ([prompts] vision), else PROMPT_PATH."""
+    path = client.prompt_path("vision", PROMPT_PATH) if hasattr(client, "prompt_path") else PROMPT_PATH
+    return path.read_text(encoding="utf-8")
+
+
 def extract(client, path: Path) -> dict:
     res = client.generate("vision", "Transcribe the customer records in this screenshot.",
-                          system=PROMPT_PATH.read_text(encoding="utf-8"), images=[path], json_schema=VISION_SCHEMA,
+                          system=prompt_text(client), images=[path], json_schema=VISION_SCHEMA,
                           temperature=0.0)
     data = res.json()
     data["_model"] = res.model

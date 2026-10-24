@@ -632,3 +632,41 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-24T15:48:42Z] D31 prepared: neutral prompt, leak tests, refresh_vision.py dry-run
+
+User Prompt (verbatim, secrets redacted):
+DECISION D31 (prompt leak): option (a) — fix it. Approved: up to 12 live gemini-3.5-flash-lite calls (11 + 1 retry) after the 07:00 UTC reset on Oct 25.
+RATIONALE: the task forbids file-specific answers. Real dataset ids in a prompt are file-specific text even if the model did not misuse them; documenting it is weaker than removing it, and the fix costs 11 calls.
+
+TONIGHT — prepare everything, no live calls:
+1. Rewrite code/prompts/vision_extract.md with neutral examples. Describe id formats as patterns (e.g. "<prefix>_<digits>") — do not use concrete ids, since even an invented one like account_1234 could collide with a real one. Show me the full prompt diff for approval before anything else.
+2. Extend the NoHardcodedAnswers test: scan code/prompts/*.md and every prompt string against the set of all ids and emails that appear in dataset/. Any hit fails. It must fail on the current prompt and pass on the new one — show both.
+3. Write code/tools/refresh_vision.py, one command for tomorrow, that:
+   a. checks it is after 07:00 UTC and refuses otherwise
+   b. re-extracts the 11 screenshots with the new prompt, WITHOUT deleting the old cache entries
+   c. compares new vs old extractions field by field per screenshot and prints the differences
+   d. runs the frozen pipeline and diffs output.csv against the current sha256 774aa9ca…
+   e. if output.csv is identical: updates frozen config hash, regenerates usage_report.md (new 11 calls = production, old 11 = development), runs validator + all tests, rebuilds code.zip, prints "READY TO SUBMIT"
+   f. if output.csv differs: changes nothing else, prints the row-level diff and the extraction diffs, and stops for my decision
+4. FALLBACK, decided now: if (f) happens and the diff is not a clear improvement, we revert the prompt, keep the old cache, and keep the leak documented as a known limitation in §8. The current output.csv stays the submission.
+5. Dry-run the script now with a mocked client (no network) to prove steps c–f work, then commit and push.
+
+ACCEPTANCE (tonight): prompt diff shown, test fails-then-passes, dry run passes both branches (identical / different) with a mock. Commit, push, fast-forward main.
+
+Agent Response Summary:
+Rewrote code/prompts/vision_extract.md with id formats as patterns only. It also drops the brand name and the status/attribute examples quoted from the screenshots, and two extra instructions I first added were removed to keep the diff minimal. The superseded prompt moved byte for byte to code/prompts/legacy/ and frozen_v1.toml points at it (prompt paths now come from the config), so tonight's frozen run is still byte-identical (config sha256 1f39d309...). Added code/tools/prompt_leaks.py (reference set of 11,686 dataset ids/emails incl. PDF text and screenshot extractions) and PromptLeaks tests: they fail on the old prompt (all 11 ids) and pass on the new one, with the frozen-config check visibly skipped until the refresh. Wrote code/tools/refresh_vision.py (preflight, time gate, 12-call budget, staging cache, field diff, candidate run, two branches). The live command refuses tonight; sandbox dry runs pass both branches: identical -> READY TO SUBMIT with all files switched, different -> exit 2 with row/extraction diffs and no repo change. No live calls.
+
+Actions:
+* git mv vision prompt to code/prompts/legacy/; new code/prompts/vision_extract.md; code/llm/__init__.py (prompt paths from config), code/audit/vision.py (prompt_text)
+* Created code/tools/prompt_leaks.py, code/tools/refresh_vision.py, code/prompts/legacy/README.md; PromptLeaks tests; usage_report generator data-driven (dev notes)
+* Edited frozen_v1.toml (legacy path), evaluation_report.md (D31 markers, section 10 pointer), README (D30/D31, commands), CONTRACT (D31); hash updates
+* Sandbox dry runs (mock identical / mock different); frozen run byte-identical; tests (1 skip), validator, custom cases; zip rebuilt; git commit, push, fast-forward main
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

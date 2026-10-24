@@ -21,7 +21,9 @@ vision = "gemini-3.5-flash-lite"    # D17: won the screenshot comparison, temper
 
 [prompts]
 intent = { path = "code/prompts/intent.md", sha256 = "8979ac713ffc8153a8e92d0db10d3150a4558d7ac88a9ade722b8b5485f961cf" }
-vision = { path = "code/prompts/vision_extract.md", sha256 = "826c80757f36441edf09d0da487a589fb97333744246f28305a511ce52f905c2" }
+# D31: the cached screenshot responses were produced with the superseded prompt below, which listed dataset ids as examples.
+# code/tools/refresh_vision.py re-extracts with code/prompts/vision_extract.md and then repoints this entry (pending, Oct 25).
+vision = { path = "code/prompts/legacy/vision_extract_frozen_v1.md", sha256 = "826c80757f36441edf09d0da487a589fb97333744246f28305a511ce52f905c2" }
 
 [thresholds]
 # D20 (L2 timing linker), minutes relative to reported_at; calibrated without labels (evaluation_report.md §5.1).

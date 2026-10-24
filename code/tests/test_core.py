@@ -332,3 +332,37 @@ class NoHardcodedAnswers(unittest.TestCase):
         missing = [m.name for m in manifest if m not in opened]
         self.assertEqual(missing, [], "evidence files never read")
         self.assertTrue(any(m.suffix == ".png" for m in manifest) and any(m.suffix == ".pdf" for m in manifest))
+
+
+class PromptLeaks(unittest.TestCase):
+    """D31: no prompt may contain an id or email that occurs in dataset/ (file-specific answers)."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(CODE / "tools"))
+        import prompt_leaks
+        cls.pl = prompt_leaks
+
+    def test_prompt_files_have_no_dataset_ids(self):
+        hits = {f.name: self.pl.leaks(f.read_text(encoding="utf-8")) for f in sorted((CODE / "prompts").glob("*.md"))}
+        self.assertEqual({k: v for k, v in hits.items() if v}, {})
+
+    def test_prompt_strings_in_code_have_no_dataset_ids(self):
+        scan = NoHardcodedAnswers("test_pipeline_code_has_no_literal_ids")
+        hits = []
+        for name in NoHardcodedAnswers.PIPELINE:
+            root = CODE / name
+            for f in sorted([root] if root.is_file() else root.rglob("*.py")):
+                for line, text in scan.code_tokens(f):
+                    if text[:1] in "\"'" or text[:2] in ('f"', "f'", 'r"', "r'"):
+                        hits += [f"{f.relative_to(CODE)}:{line}: {h}" for h in self.pl.leaks(text)]
+        self.assertEqual(hits, [])
+
+    def test_frozen_config_prompts_have_no_dataset_ids(self):
+        import tomllib
+        cfg = tomllib.loads((CODE / "config" / "frozen_v1.toml").read_text(encoding="utf-8"))
+        paths = {k: CODE.parent / v["path"] for k, v in cfg["prompts"].items()}
+        legacy = [k for k, p in paths.items() if "legacy" in p.parts]
+        if legacy:
+            self.skipTest(f"pending D31 refresh: frozen_v1 still uses the superseded prompt(s) {legacy} that produced the cached responses")
+        self.assertEqual({k: self.pl.leaks(p.read_text(encoding="utf-8")) for k, p in paths.items() if self.pl.leaks(p.read_text(encoding="utf-8"))}, {})

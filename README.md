@@ -22,7 +22,7 @@ decision log to `.work/runs/latest/`.
 
 Windows (PowerShell): `py -m venv .venv; .venv\Scripts\pip install -r code\requirements.txt; .venv\Scripts\python code\main.py`
 
-Expected result: config sha256 `58e1afb22468840b7d0f567291d1b684a6c1ab6cb4fa3270e528d2f566264604`, `output.csv` sha256
+Expected result: config sha256 `1f39d309dbb8d6611cd987feb0c577b3417642c005b615fbfbbeef91242ca612`, `output.csv` sha256
 `774aa9ca3e0073383fc9251ce17217b684c4b06161c5385c712945a420d1cb1f`.
 
 ### Other commands
@@ -34,6 +34,8 @@ Expected result: config sha256 `58e1afb22468840b7d0f567291d1b684a6c1ab6cb4fa3270
 | Unit tests | `.venv/bin/python -m unittest discover -s code/tests` |
 | Policy-condition coverage audit | `.venv/bin/python code/evaluation/policy_coverage.py --run latest` |
 | Regenerate the usage report | `.venv/bin/python code/tools/usage_report.py` |
+| Check prompts for dataset ids (D31) | `.venv/bin/python code/tools/prompt_leaks.py` |
+| One-time D31 screenshot refresh (live calls; dry run: `--mock identical` / `--mock different` in a copy of the repo) | `.venv/bin/python code/tools/refresh_vision.py` |
 | Switch one decision off for measurement | e.g. `--no-timing-links`, `--no-unblocked-backup-rule`, `--strict-catalog-veto` (the run log records the deviation) |
 | Live LLM calls for new data (development only) | put `GEMINI_API_KEY=...` in an uncommitted `.env`, then add `--live` |
 
@@ -118,6 +120,8 @@ run is served from that cache (`code/evaluation/usage_report.md`).
 | D27 | A subject with no observable record is an explicit `NO_OBSERVABLE_RECORDS` branch and a validator warning |
 | D28 | Rejected: request scoping that would only fix one sample step |
 | D29 | Rejected: tie-breaking interchangeable resources between requests (it would attribute another person's data) |
+| D30 | Absence by omission from replica tables only is kept, documented as a known limitation |
+| D31 | Prompts contain no dataset id or email; the screenshot responses are re-extracted with the neutral prompt (`code/tools/refresh_vision.py`) |
 
 ## Results
 

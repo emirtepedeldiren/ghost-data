@@ -156,7 +156,10 @@ PROVIDERS = {"gemini": GeminiProvider, "anthropic": AnthropicProvider}
 class LLMClient:
     def __init__(self, config_path: Path = CONFIG_PATH, cache_only: bool | None = None):
         load_dotenv()
-        cfg = tomllib.loads(config_path.read_text(encoding="utf-8"))["llm"]
+        full = tomllib.loads(config_path.read_text(encoding="utf-8"))
+        cfg = full["llm"]
+        # Prompt files per task, from the config's [prompts] table (the frozen config pins path + sha256).
+        self.prompts: dict[str, Path] = {k: REPO_ROOT / v["path"] for k, v in full.get("prompts", {}).items()}
         self.cache_only = cfg.get("cache_only", False) if cache_only is None else cache_only
         self.provider_name = cfg["provider"]
         self.models: dict[str, str] = cfg["models"]
@@ -166,6 +169,10 @@ class LLMClient:
         self._provider: _Provider | None = None
         self._no_sampling: set[str] = set()   # models that rejected temperature (memoized per run)
         self._lock = threading.Lock()
+
+    def prompt_path(self, task: str, default: Path) -> Path:
+        """The prompt file for a task: the config's [prompts] entry, else the given default."""
+        return self.prompts.get(task, default)
 
     @property
     def provider(self) -> _Provider:
