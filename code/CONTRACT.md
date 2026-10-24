@@ -1,14 +1,15 @@
 # CONTRACT.md — Ghost Data Still Exists deletion-audit agent
 
-Status: **v0.5** (2026-10-24, Round 1 closed). Built: `code/contract.py`, `code/validate.py`, `code/evaluation/main.py`,
+Status: **v0.6** (2026-10-24, Round 2 closed). Built: `code/contract.py`, `code/validate.py`, `code/evaluation/main.py`,
 the deterministic core `code/audit/` + `code/main.py`, the provider-agnostic client `code/llm/` (not yet wired in),
 `code/tools/list_models.py`, unit tests `code/tests/`. Decisions D1–D15 are the user's.
 
 **Core principle (D11 revised):** an activity row may *propose* a resource-to-user link. **State and citations come only
 from observed evidence files.** When an observation contradicts an activity claim, the observation wins. D13 and D14
-still hold: marketing_001 is contradicted by its screenshot, and object_19 has no observed state.
-**D15:** the timing module is a normal link source under D11. It stays behind `--timing-links`; its default is decided by
-the sample comparison (§15).
+still hold. D13 was revised in Round 2 (§18): an observation vetoes a proposed link only when the identity it shows resolves
+to a different known user. object_19 has no observed state.
+**D15/D20:** the timing module is a normal link source under D11. Since Round 2 it is the L2 rule and on by default
+(`--no-timing-links` disables it).
 
 Precedence when sources disagree on the output format: `problem_statement.md` > `README.md` > `AGENTS.md` (D6).
 Precedence for packaging paths: `README.md` (D8).
@@ -125,11 +126,11 @@ S1 load ─► S2 intent ─► S3 identity ─► S4 extract ─► S5 link ─
   `^user_\d+$`, email RFC-lite). A non-matching value is stored as `unparsed` and flagged, never guessed.
 - Cross-check: each of the 11 PNGs (and the account-history PDF) has a `LINK_RESOURCE_IDENTITY` activity
   timestamped exactly `captured_at + 7 min` (activity_4000–4011). Per D11 the activity only **corroborates**. The
-  screenshot content is the observation. When they disagree, the resource is **unlinked and flagged** (D13), never
-  attributed from the activity.
-- D13 (resolved): `marketing_profile_console.png` shows *Soo-jin Park / sj.park@naver.com / +82 10-5837-9451 /
-  marketing_001*. A search of `user_audit_log.csv` old/new values and `user_identities.csv` (email, name, digit-normalized
-  phone) found **no match** (2026-10-24), so marketing_001 stays unlinked. `activity_4008` → user_09 is a claim only.
+  screenshot content is the observation. When the screenshot shows an identity that resolves to a **different known user**,
+  the activity's link is vetoed. When it resolves to no one, the link is kept and flagged in the run log (D13 revised, §18).
+- D13 (revised): `marketing_profile_console.png` shows *Soo-jin Park / sj.park@naver.com / +82 10-5837-9451 /
+  marketing_001*. That identity matches no user, so `activity_4008` links marketing_001 to user_09 (case_63), flagged
+  `identity-mismatch`.
 
 ## 5. Observation schema (output of S4)
 
@@ -219,7 +220,7 @@ inclusive boundary is load-bearing.
 | RETAIN (audit / legal hold) | RETAINED | — | — | VERIFY_RECORD_PRESENT |
 | data flow | FLOW_ACTIVE | REPORT_ACTIVE_DATA_FLOW | DISABLE_DATA_FLOW | VERIFY_DATA_FLOW_DISABLED |
 | data flow | FLOW_DISABLED | — | — | VERIFY_DATA_FLOW_DISABLED |
-| BACKUP_ARCHIVE (RETAIN + block) | RESTORE_ALLOWED | REPORT_RESTORE_RISK | BLOCK_RESTORE | VERIFY_RESTORE_BLOCKED |
+| BACKUP_ARCHIVE (RETAIN + block) | RESTORE_ALLOWED (incl. D22) | REPORT_RESTORE_RISK | BLOCK_RESTORE | VERIFY_RESTORE_BLOCKED |
 | BACKUP_ARCHIVE | RESTORE_BLOCKED | — | — | VERIFY_RESTORE_BLOCKED |
 
 - `deletion_status = INCOMPLETE` iff any FINDING exists, otherwise `COMPLETE`.
@@ -246,12 +247,13 @@ inclusive boundary is load-bearing.
 | `identifier` | a subject identifier co-occurs with the resource_id inside one unit (§4 S4 table) of a file with `captured_at <= T` | on |
 | `identifier_post_audit` | same, in a file captured after T (D12); ownership only, never state or citation | on (`--no-post-audit-links` disables) |
 | `catalog` | `LINK_RESOURCE_IDENTITY` activity naming a subject identifier (proposal, D11 revised) | on |
-| `timing` (D3, D15) | deletion_worker events in `[requested_at, reported_at]` whose result matches `reported_status`; global one-to-one assignment across all requests (eval + sample request rows, never their answers); link **only when exactly one candidate remains**; ambiguous candidates are logged and left unlinked | flag `--timing-links`; default decided by data (§15) |
+| `identifier_post_audit_unit` (D21) | same as `identifier_post_audit`, but the unit's own timestamp is also after T. The resource gets a step only from a state observation `<= T`, and never a fix-2 verification | on (`--no-post-audit-unit-links`) |
+| `timing` (D20, rule L2) | worker schedule relative to `reported_at`, global unique assignment (§18) | on (`--no-timing-links`) |
 
-`catalog` (D11 revised): a `LINK_RESOURCE_IDENTITY` activity naming a subject identifier proposes a link. The proposal
-is rejected when the resource's observations point only to other users (the observation wins), and is logged.
-A linked resource without any file observation `<= audit_at` gets no state. `object_19` and `marketing_001` therefore
-produce no step (D13, D14).
+`catalog` (D11 revised, D13 revised): a `LINK_RESOURCE_IDENTITY` activity naming a subject identifier proposes a link. The
+proposal is vetoed when an observation of the resource shows an identity that resolves to a different known user. An identity
+that resolves to no one is flagged, not vetoed. A linked resource without any file observation `<= audit_at` gets no state, so
+`object_19` produces no step (D14).
 
 D3 investigation result (2026-10-24): **no explicit join exists** for `analytics_9406` (case_03) or
 `account_6440` (case_21). Each id occurs in exactly three places: one activity row (`activity_3852`, `activity_3661`),
@@ -339,7 +341,7 @@ These cases reuse real dataset identities and evidence. Only the request row is 
 |---|---|---|
 | N1 post-T linking | D12-A: ownership only, logged, flag to disable | resolved |
 | N2 model IDs | D10 revised, D17: Gemini; see §9 | intent: substitute pending decision; vision: gemini-3.5-flash-lite by comparison |
-| N3 marketing_001 | D13-B: unlinked and flagged; identity search found no match | resolved |
+| N3 marketing_001 | D13 revised (Round 2): linked via activity_4008, flagged identity-mismatch | resolved |
 | N4 object_19 | D14-A: excluded (activity-only link, D11) | resolved |
 
 Original wording of the items, kept for traceability:
@@ -392,3 +394,25 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
 - **D19:** absence rule (c) is the default (`--absence-rule fallback_delete`). Omission can prove a record was deleted, never
   that a retained record is gone. Fix 2 is restricted to evidence-linked resources, consistent with D14.
 - **Standing rule:** at the end of every round, commit and push to the working branch without asking.
+
+## 18. Round 2 decisions (2026-10-24)
+- **D20 (linking rule L2), without the closed-world guard.** Pool: requests (eval + sample request rows, never answers) that
+  authorize deletion and resolve to a subject.
+  - Account DELETE events: event in `[reported_at - 80 min, reported_at + 10 min]`; result compatible (COMPLETE→SUCCESS,
+    NOT_STARTED→FAILED, PARTIALLY_COMPLETE→PARTIAL|SUCCESS); not observed to belong to another user; the subject owns no
+    account through identifier evidence.
+  - Follow-up worker actions on other resources: event in `[reported_at - 35 min, reported_at)`; no result filter; not
+    observed to belong to another user; the subject has no resource of that type yet (owned or assigned). A resource owned
+    only by people without a request goes to nobody.
+  - Elimination repeats until stable. A link is made only when exactly one candidate remains. Ambiguous events are logged with
+    their candidates and never tie-broken (order, jitter and case_id were checked and are not signals).
+  - Calibration without labels (eval identifier-linked worker events): account deletes p1..p99 = -74.8..-44.0 min; policy
+    follow-ups -29.0..-2.9 min. Two account events fall outside, and both belong to a different request by the same subject.
+    The bounds are unchanged (evaluation_report.md §3.6).
+- **D21 (D12b).** Ownership from post-audit units whose own timestamp is after T. Such a link produces a step only from a
+  state observation `<= T`, and never a fix-2 verification.
+- **D22.** A backup observed `<= T` that holds one of the subject's identifiers, with no restore state observed `<= T`, is
+  RESTORE_ALLOWED → REPORT_RESTORE_RISK. COMPLETE needs positive proof of a block.
+- **D13 (revised).** An observation vetoes a proposed link only when the identity it shows resolves to a different known user.
+  An identity that resolves to no one is flagged in the run log and does not veto. Rationale: it matches L2's "belongs to
+  someone else" rule, D22 makes an empty COMPLETE unprovable, and a missed record is the costly failure.

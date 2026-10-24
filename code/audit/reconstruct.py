@@ -65,7 +65,8 @@ class StateIndex:
             return "BLOCK_RESTORE"
         return self.rule_action.get(category or "")
 
-    def resolve(self, rid: str, audit_at: str, absence_rule: str = "override") -> ResourceState:
+    def resolve(self, rid: str, audit_at: str, absence_rule: str = "override",
+                subject_identifiers: frozenset[str] = frozenset(), unblocked_backup_rule: bool = True) -> ResourceState:
         """State at audit_at. absence_rule decides when omission from a snapshot proves ABSENT:
           override  baseline: the latest snapshot omitting the resource beats an older explicit observation
           scope     (a) omission counts only within the snapshot's own store/collection scope
@@ -73,6 +74,8 @@ class StateIndex:
           fallback  (b) omission counts only when there is no explicit observation <= audit_at at all
           fallback_delete  (c) as (b), and only for resources whose policy is DELETE: omission from a partial
                     snapshot can show that a record was deleted, never that a retained/redacted record is gone
+        unblocked_backup_rule (D22): a backup observed <= audit_at holding one of the subject's identifiers, with no
+        restore state observed <= audit_at, is RESTORE_ALLOWED. COMPLETE needs positive proof of a block.
         """
         category, cat_src, hint = self.category(rid, audit_at)
         action = self.action_for(category, hint)
@@ -119,6 +122,12 @@ class StateIndex:
                 return from_obs(best)
             if cov:
                 return from_cov(cov)
+        if unblocked_backup_rule and action == "BLOCK_RESTORE" and not obs:
+            held = [o for o in all_obs if o.captured_at <= audit_at and o.identifiers_present & subject_identifiers]
+            if held:
+                o = latest(held)
+                return ResourceState(rid, system, vocab.RESTORE_ALLOWED, o.file_id, "observation", category, cat_src, action,
+                                     [f"{o.locator} ({o.unit_kind}): holds subject data, no block observed <= audit_at (D22)"])
         return ResourceState(rid, system, None, None, "none", category, cat_src, action, ["no state observation <= audit_at"])
 
 

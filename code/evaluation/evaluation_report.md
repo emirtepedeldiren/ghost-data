@@ -1,6 +1,6 @@
 # Evaluation report: Ghost Data Still Exists audit agent
 
-Status: **in progress (after Round 1, 2026-10-24)**. Sections marked TODO are filled in later rounds.
+Status: **in progress (after Round 2, 2026-10-24)**. Sections marked TODO are filled in later rounds.
 
 ## 1. How we measure
 
@@ -37,9 +37,11 @@ was chosen and measured on the tuning split only.
 | **Round 1** | holdout (8) | **100.00%** | **100.00%** | **81.82%** | **90.00%** | **81.82%** | **37.50%** |
 | Round 1 + `--timing-links` | tuning (24) | 100.00% | 97.14% | 91.28% | 94.12% | 88.89% | 37.50% |
 | Round 1 + `--timing-links` | holdout (8) | 100.00% | 100.00% | 81.82% | 90.00% | 81.82% | 37.50% |
+| **Round 2** (L2 timing D20, D21, D22, D13 revised) | tuning (24) | **100.00%** | **99.30%** | **94.63%** | **96.91%** | **94.00%** | **62.50%** |
+| **Round 2** | holdout (8) | **100.00%** | **100.00%** | **90.91%** | **95.24%** | **90.91%** | **62.50%** |
 
-All 518 eval predictions pass the validator (2 empty-step warnings: case_55, case_63). `--timing-links` stays off by default
-until Round 2 (linking) decides it from the data (D15).
+All 518 eval predictions pass the validator, with no warnings: there are no COMPLETE/INCOMPLETE rows with empty steps.
+Round 2 tuning: 8 missing gold steps (the 7 symmetric ones in §3.6 plus 1 unreachable) and 1 extra step (`account_6523`).
 
 ## 3. Failures found and improvements made
 
@@ -90,9 +92,74 @@ one-off non-deletion requests (case_533 to case_542) are NOT_APPLICABLE, and the
 `audit_record_5569` (case_20) and `audit_record_6645` (case_18) appear in **no participant file**: not in any evidence file, the activity
 stream or the manifest. The gold includes them, so they are irreducible misses, and we do not chase them.
 
-### 3.5 Still open after Round 1 (tuning split)
+### 3.5 Open after Round 1 (tuning split; resolved in §3.6)
 19 missing gold steps: 10 resources linkable only through activity rows, 8 observed only without identifiers (404 lookups, anonymized
 analytics), and 1 unreachable. There is 1 extra step (`account_6523`, a stale March lookup for case_17's email). This is the linking work for Round 2.
+
+### 3.6 Round 2: linking (D20 L2, D21, D22, D13 revised)
+**Failure.** The Round 1 timing linker assigned the account events correctly as a global one-to-one, but its follow-up step
+considered only requests whose account event was already assigned. When case_28's account was ambiguous, case_28 dropped out
+of the pool, and `analytics_6077` looked unique to case_27. The worker also processes people who have no request at all:
+`analytics_9447` runs in the same slot as `account_146` (user_31, who has no case). The result was 3 wrong analytics links.
+
+**Signals found** (tuning gold only; holdout never inspected):
+- The worker follows a schedule relative to `reported_at`: account deletes at -75..+8 min; "policy" follow-ups at about -28.5
+  (analytics, tombstone), -21 (support), -14.5 (data flow) and -7 (backup) min. Seconds are random per event.
+- Every tuning gold case has exactly 1 account and at most 1 resource of each type (24/24).
+- Worker result ↔ reported_status holds for account events only (24/24 with PARTIALLY_COMPLETE→PARTIAL|SUCCESS).
+- Rejected as signals: the order of follow-ups within a slot (support and backup run in the opposite order to data flow),
+  per-case jitter, and analytics content (the metric values also occur on other users' records).
+
+**Rule L2** is specified in CONTRACT.md §18. Ablations on the tuning split (scratchpad simulation; link counts include links
+also made by identifiers):
+
+| Variant | Tuning links correct / wrong |
+|---|---|
+| L2 | 29 / 0 |
+| request window `[requested_at, reported_at]` instead of the schedule window | 22 / 1 |
+| without the one-per-type slot rule | 24 / 1 (case_11 `analytics_9447` returns) |
+| without the result filter | 24 / 0 |
+| strict PARTIALLY_COMPLETE→PARTIAL | 28 / 0 |
+| closed-world guard | no change (not adopted) |
+
+**Calibration without labels** (worker events on resources linked by identifiers in the 518 eval cases, offsets from `reported_at` in minutes):
+
+| Event type | n | min | p1 | p99 | max |
+|---|---|---|---|---|---|
+| account DELETE | 236 | -41232.3 | -74.8 | -44.0 | 272936.8 |
+| REDACT_RECORD (policy) | 37 | -28.8 | -28.8 | -14.9 | -14.9 |
+| RETAIN_RECORD (policy) | 8 | -29.0 | -29.0 | -28.1 | -28.1 |
+| DISABLE_DATA_FLOW (policy) | 33 | -15.0 | -15.0 | -7.4 | -7.4 |
+| BLOCK_RESTORE (policy) | 33 | -8.0 | -8.0 | -2.9 | -2.9 |
+| DELETE_RECORD ("final result", outside L2 windows) | 326 | -41113.4 | 38.5 | 92.1 | 98.3 |
+| REDACT_RECORD ("final result") | 126 | 38.3 | 39.0 | 113.5 | 150654.0 |
+| ANONYMIZE_RECORD ("final result") | 73 | 38.2 | 38.3 | 133.0 | 82781.0 |
+
+Two account events fall outside `[-80, +10]`, and both belong to a different request by the same subject: `account_5762`
+(case_34) is a FAILED attempt four weeks before the request, and `account_6523` (case_46) is deleted six months after it.
+Neither argues for a wider window, so the bounds are unchanged. There are no identifier-linked "policy" analytics events in eval
+(those records are always identifier-free), so the analytics offset rests on the tuning data alone.
+
+**Still unresolved (7 tuning steps, by design).** Same-slot, same-type resources with no identifiers are interchangeable:
+`account_410` {case_23, 547, 548}, `account_7012` {28, 29}, `analytics_9406` {03, 44}, `analytics_5335` {21, 23, 546, 547, 548},
+`analytics_1895`/`analytics_4566` {24, 25, 26, 549, 550}, `analytics_4574` {27, 28}. L2 leaves them unlinked.
+
+**D21** (post-audit unit ownership, restricted). On eval, 31 such links were dropped by the restriction and 20 were also linked
+another way. On top of D20 it adds **0 steps**. Alone (D20 off) it adds 2 steps, both the `account_3866` pattern (404 before the
+audit, cited; a later bundle shows the profile with the subject's identifiers): case_231 `account_7324` (evidence_80) and
+case_423 `account_2420` (evidence_68).
+
+**Eval drift vs the Round 1 run** (no labels; decisions applied cumulatively, and each change is attributed to the first
+decision that caused it; with every flag off the output is byte-identical to Round 1):
+
+| Decision | Status changes | Cases with changed steps | Net steps |
+|---|---|---|---|
+| D20 (L2 timing) | 0 | 160 | +167 |
+| D21 | 0 | 0 | 0 |
+| D22 | 1: case_55 COMPLETE→INCOMPLETE | 1 | +3 |
+| D13 revised | 1: case_63 COMPLETE→INCOMPLETE | 1 | +3 |
+
+Final eval: 356 INCOMPLETE, 152 COMPLETE, 10 NOT_APPLICABLE. No COMPLETE row has empty steps.
 
 ## 4. Model selection
 

@@ -266,3 +266,91 @@ repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-or
 worktree=main
 parent_agent=none
 
+
+## [2026-10-24T14:11:50Z] SESSION START
+
+tool=Claude Code
+model=claude-opus-5-5[1m]
+Repo Root: /Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+Branch: phase0-contract-and-eval
+Worktree: main
+Parent Agent: none
+Language: py
+Time Remaining: not configured
+
+## [2026-10-24T14:22:06Z] Round 2 investigation: linking table, proposed rule L2, case_55/63
+
+User Prompt (verbatim, secrets redacted):
+Read ./AGENTS.md first and follow its logging format (append to the existing log.txt, never overwrite).
+
+CONTEXT: Context cleared after Round 1 to save tokens. Rebuild from the repo, not memory: code/CONTRACT.md (D1–D19), the last 3 log.txt entries incl. ROUND 1 SUMMARY, git log --oneline -10. Holdout rule D16 still applies: never print per-case diffs for case_04, 08, 12, 16, 20, 24, 28, 32.
+
+ROUND 2 — linking (18 of the 19 remaining tuning misses)
+EVIDENCE: 10 resources linked only through activity rows, 8 observed with no identifiers (404 lookups, anonymized analytics). --timing-links gives R 91.28% / P 97.14% but makes 3 wrong assignments (e.g. case_28's analytics record assigned to case_27).
+MY HYPOTHESIS: the wrong assignments happen because each case is linked independently. Several cases share reported_at, so a resource can satisfy multiple cases' windows. A global one-to-one assignment with stricter constraints (time window, worker result ↔ reported_status, expected resource type per user) should remove them.
+REQUEST, investigate before fixing:
+  1. For the 3 wrong assignments and the 18 misses, show a table: resource_id, every source mentioning it, candidate cases, and which signal would uniquely pick the right one.
+  2. Propose the linking rule based on that table — I approve it before you implement.
+ALSO: case_55 and case_63 are COMPLETE with empty steps on the eval set. case_63 is the marketing_001 case (D13). Explain both; an empty COMPLETE is almost certainly wrong.
+
+ACCEPTANCE (for this turn): the table, the proposed rule, the case_55/63 explanation. No code changes yet.
+
+Agent Response Summary:
+Rebuilt context from CONTRACT.md v0.5, the last log entries and git log. The account step of the timing linker is already global one-to-one. The 3 wrong analytics assignments come from step 2, which only considers requests whose account event was assigned, and from the worker also processing users who have no request (user_31 / account_146 next to analytics_9447). Worker events follow a fixed schedule relative to reported_at, and every tuning gold case has exactly 1 account and at most 1 resource per type (24/24). The proposed rule L2 adds narrow windows, a result filter for account events only, a one-per-type slot rule, the intent pool and global elimination. Simulated in the scratchpad, it gives 0 wrong links (tuning and holdout aggregate), fixes 11 of the 18 misses and removes all 3 wrong assignments; 7 stay ambiguous because same-slot identifier-free resources are symmetric. case_55: the only evidence <= audit_at is screenshot evidence_32, which shows backup_9287 with no restore flag (state None); every other user_16 resource is only in post-audit evidence_01. case_63: no participant file carries any user_09 identifier, so the empty row follows directly from D13. No repo code changed.
+
+Actions:
+* Read code/CONTRACT.md, log.txt (last entries), evaluation_report.md, code/audit/linking.py, code/main.py, code/evaluation/rootcause.py
+* Ran code/main.py on samples (timing off/on) and on the eval set (outputs under code/cache/, not ./output.csv); ran rootcause.py (tuning only)
+* Scratchpad scripts r2_table.py and r2_sim.py: per-resource sources and candidates; L2 simulation plus 6 ablations; post-audit ownership impact; stateless backup scan
+* Viewed evidence_32 and evidence_60 screenshots
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-10-24T14:30:39Z] Round 2: D20 L2 timing, D21, D22, D13 revised; calibration, drift, commit
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Round 2 investigation reviewed. The table is exactly the evidence I wanted — especially the finding that the wrong links came from the follow-up step, not the account step.
+
+DECISION D20: L2 approved as written, without the closed-world guard (no effect → no complexity).
+CONCERN: the 80/10/35-minute bounds were fitted on tuning offsets, with only 6 min of margin on the lower bound.
+REQUEST: calibrate without labels. Across all 518 eval cases, take worker events already linked by identifiers and plot their offsets from reported_at (min / p1 / p99 / max per event type). If any fall outside the L2 bounds, report them before changing anything. This uses no gold labels, so it is calibration, not tuning.
+
+DECISION D21 (D12b): approved with your restriction — post-audit ownership links produce a step only when a state observation exists at or before audit_at; no fix-2 empty verifications for them.
+CONDITION: report how many eval steps this adds after the restriction, and show 5 random ones for me to audit by hand.
+
+DECISION D22 (case_55): approved. COMPLETE requires positive proof; no observed block ≠ blocked. A backup holding the subject's identifier with no block observed at or before audit_at is a REPORT_RESTORE_RISK.
+
+DECISION D13 (revised, case_63): an observation vetoes a proposed link only when the identity it shows resolves to a different known user. An identity that resolves to no one is flagged in the run log but does not veto.
+RATIONALE: (1) this matches L2's own rule ("belongs to someone else"); (2) an empty COMPLETE is unprovable under D22; (3) in a deletion audit a missed record is the costly failure — the whole problem is about ghost data. marketing_001 therefore links to case_63 via activity_4008, flagged as identity-mismatch.
+
+REQUEST — implement D20–D22 + revised D13, then measure.
+ACCEPTANCE CRITERIA:
+  - tuning: missing 19 → ~8 (the 7 symmetric + 1 unreachable), extras ≤ 1, precision ≥ 97%
+  - holdout: aggregate only, must not regress
+  - validator passes on all 518; zero COMPLETE rows with empty steps
+  - eval drift report (no labels): how many of the 518 cases changed status vs the previous run, grouped by which decision caused it
+  - the calibration table and the 5 D21 samples
+End with ROUND 2 SUMMARY, then commit and push (standing rule).
+
+Agent Response Summary:
+Calibration without labels on eval identifier links: account deletes p1..p99 = -74.8..-44.0 min, policy follow-ups -29.0..-2.9 min. The 2 outliers belong to a different request by the same subject, so the bounds are unchanged. Implemented L2 (timing on by default), D21, D22 and revised D13, each with an off-flag. With every flag off the eval output is byte-identical to Round 1. Tuning: missing 19 -> 8 (7 symmetric + 1 unreachable), extras 1, P 99.30 / R 94.63, sequence 62.50%. Holdout aggregate: P 100 / R 81.82 -> 90.91, no regression. Validator passes on 518 with no empty-step rows. Eval drift: D20 changes steps in 160 cases (0 status changes), D21 adds 0 steps on top of D20 (2 alone; only 2 exist to audit, not 5), D22 flips case_55 and D13 revised flips case_63 to INCOMPLETE. 5 unit tests added (15 pass).
+
+Actions:
+* Edited code/audit/linking.py (L2 TimingLinker, D21 link class, revised catalog veto with flags), code/audit/reconstruct.py (D22), code/main.py (defaults and flags)
+* Added 5 unit tests to code/tests/test_core.py; updated code/CONTRACT.md (v0.6, section 18) and code/evaluation/evaluation_report.md (section 3.6)
+* Scratchpad r2_calib.py; ran samples, scorer (tuning and holdout), rootcause, cumulative eval variants v0-v3 plus final, validator, unit tests
+* Wrote ./output.csv (final eval run); git commit and push to phase0-contract-and-eval
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

@@ -99,3 +99,90 @@ class TemporaryIntentFallback(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _users():
+    from audit.identity import IdentityResolver
+    rows = [{"user_id": f"user_{i}", "name": f"Person {i}", "email": f"p{i}@example.com", "phone": f"+1 555 000 00{i}",
+             "email_hash": str(i) * 64, "updated_at": "2026-01-01T00:00:00Z"} for i in (1, 2, 3)]
+    return IdentityResolver(rows, [])
+
+
+def _obs(rid, file_id="evidence_01", captured="2026-09-10T00:00:00Z", state=None, idents=()):
+    from audit.model import Observation
+    return Observation(file_id, captured, None, vocab.system_for(rid), rid, None, state, frozenset(idents))
+
+
+def _req(cid, user, status="COMPLETE", reported="2026-09-02T12:00:00Z"):
+    return {"case_id": cid, "email": f"p{user}@example.com", "requested_at": "2026-09-01T12:00:00Z",
+            "reported_status": status, "reported_at": reported, "audit_at": "2026-09-15T12:00:00Z", "request_text": "delete"}
+
+
+def _worker(aid, t, etype, rid, result="SUCCESS"):
+    return {"activity_id": aid, "event_time": t, "event_type": etype, "source_system": "deletion_worker",
+            "target_system": "", "resource_id": rid, "reported_result": result, "details": f"Policy action completed for {rid}."}
+
+
+class TimingLinkerL2(unittest.TestCase):
+    """D20: global unique assignment with the one-resource-per-type slot rule."""
+
+    def link(self, requests, activity, observations):
+        from audit.linking import OwnershipIndex, TimingLinker
+        res = _users()
+        t = TimingLinker(requests, activity, OwnershipIndex(observations, res), res)
+        return {cid: sorted(l.resource_id for l in ls) for cid, ls in t.assigned.items()}, t.ambiguous
+
+    def test_slot_rule_and_elimination(self):
+        reqs = [_req("case_1", 1), _req("case_2", 2)]
+        acts = [_worker("a1", "2026-09-02T11:00:00Z", "DELETE_RECORD", "account_10"),
+                _worker("a2", "2026-09-02T11:05:00Z", "DELETE_RECORD", "account_20"),
+                _worker("a3", "2026-09-02T11:31:00Z", "ANONYMIZE_RECORD", "analytics_20")]
+        obs = [_obs("account_10", idents={"email:p1@example.com"}), _obs("analytics_10", idents={"user:user_1"})]
+        assigned, _ = self.link(reqs, acts, obs)
+        self.assertEqual(assigned["case_2"], ["account_20", "analytics_20"])   # user_1 already owns both types
+        self.assertEqual(assigned["case_1"], ["account_10"])
+
+    def test_symmetric_followups_stay_unlinked(self):
+        reqs = [_req("case_1", 1), _req("case_2", 2)]
+        acts = [_worker("a1", "2026-09-02T11:31:09Z", "ANONYMIZE_RECORD", "analytics_4574"),
+                _worker("a2", "2026-09-02T11:31:53Z", "ANONYMIZE_RECORD", "analytics_6077")]
+        assigned, ambiguous = self.link(reqs, acts, [])
+        self.assertEqual(assigned, {})
+        self.assertEqual(len(ambiguous["case_1"]), 2)
+
+    def test_requestless_owner_and_windows(self):
+        reqs = [_req("case_1", 1, status="NOT_STARTED")]
+        acts = [_worker("a1", "2026-09-02T11:31:00Z", "ANONYMIZE_RECORD", "analytics_31"),        # owned by user_3
+                _worker("a2", "2026-09-02T10:30:00Z", "DELETE_RECORD", "account_30", "FAILED"),     # -90 min: outside
+                _worker("a3", "2026-09-02T11:10:00Z", "DELETE_RECORD", "account_40", "SUCCESS")]    # result mismatch
+        assigned, _ = self.link(reqs, acts, [_obs("analytics_31", idents={"user:user_3"})])
+        self.assertEqual(assigned, {})
+
+
+class StateAndCatalogRules(unittest.TestCase):
+    def test_d22_unblocked_backup_is_restore_risk(self):
+        from audit.model import EvidenceIndex
+        from audit.reconstruct import StateIndex
+        rules = [{"data_category": "BACKUP_ARCHIVE", "required_action": "RETAIN"}]
+        subj = frozenset({"email:p1@example.com"})
+        held = _obs("backup_9287", idents=subj)
+        si = StateIndex(EvidenceIndex(observations=[held]), [], rules)
+        self.assertEqual(si.resolve("backup_9287", "2026-09-15T00:00:00Z", "fallback_delete", subj).state, vocab.RESTORE_ALLOWED)
+        self.assertIsNone(si.resolve("backup_9287", "2026-09-15T00:00:00Z", "fallback_delete", frozenset({"email:x@y.z"})).state)
+        blocked = _obs("backup_9287", "evidence_02", "2026-09-12T00:00:00Z", vocab.RESTORE_BLOCKED)
+        si = StateIndex(EvidenceIndex(observations=[held, blocked]), [], rules)
+        self.assertEqual(si.resolve("backup_9287", "2026-09-15T00:00:00Z", "fallback_delete", subj).state, vocab.RESTORE_BLOCKED)
+
+    def test_d13_revised_veto_only_for_known_other_user(self):
+        from audit.linking import OwnershipIndex, catalog_links
+        res = _users()
+        subject, _ = res.resolve("p1@example.com")
+        act = [{"activity_id": "activity_4008", "event_time": "2026-09-10T00:00:00Z", "event_type": "LINK_RESOURCE_IDENTITY",
+                "source_system": "data_catalog", "target_system": "", "resource_id": "marketing_001", "reported_result": "SUCCESS",
+                "details": "Data catalog linked marketing_001 to p1@example.com and user_1."}]
+        unknown = {"marketing_001": [_obs("marketing_001", idents={"email:someone@else.example"})]}
+        links, rejected, flags = catalog_links(subject, "2026-09-15T00:00:00Z", act, OwnershipIndex([], res), unknown)
+        self.assertEqual(([l.resource_id for l in links], rejected, len(flags)), (["marketing_001"], [], 1))
+        known = {"marketing_001": [_obs("marketing_001", idents={"email:p2@example.com"})]}
+        links, rejected, _ = catalog_links(subject, "2026-09-15T00:00:00Z", act, OwnershipIndex([], res), known)
+        self.assertEqual((links, len(rejected)), ([], 1))

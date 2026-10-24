@@ -3,12 +3,14 @@
 Link sources:
   identifier            subject identifier in the same evidence unit, file captured <= audit_at
   identifier_post_audit same, in a file captured after audit_at (D12: ownership only; the unit's own
-                        timestamp must be <= audit_at when it has one)
-  catalog               LINK_RESOURCE_IDENTITY activity naming a subject identifier (an activity
-                        *proposal*, D11 revised); rejected when an observation of the resource shows
-                        only another person's identifiers
-  timing                deletion_worker activity in the request window, unique one-to-one assignment
-                        (flag-controlled, D15)
+                        timestamp is <= audit_at or absent)
+  identifier_post_audit_unit
+                        same, but the unit's own timestamp is also after audit_at (D21: ownership only; the
+                        resource gets a step only from a state observation <= audit_at, never a fix-2 verification)
+  catalog               LINK_RESOURCE_IDENTITY activity naming a subject identifier (an activity *proposal*,
+                        D11 revised). Vetoed only when an observation's identity resolves to a different known
+                        user (D13 revised); an identity that resolves to no one is flagged, not vetoed
+  timing                D20 (L2): deletion_worker schedule relative to reported_at, global unique assignment
 Resources co-occurring in a unit (e.g. search_documents.source_resource_id) are linked only when the
 unit carries no other person's identifiers.
 """
@@ -43,7 +45,7 @@ class OwnershipIndex:
 
 
 def explicit_links(subject: Subject, audit_at: str, observations: list[Observation],
-                   resolver: IdentityResolver, post_audit_links: bool) -> list[Link]:
+                   resolver: IdentityResolver, post_audit_links: bool, post_audit_unit_links: bool = True) -> list[Link]:
     links: list[Link] = []
     for o in observations:
         hit = o.identifiers_present & subject.identifiers
@@ -53,6 +55,8 @@ def explicit_links(subject: Subject, audit_at: str, observations: list[Observati
             via = "identifier"
         elif post_audit_links and (o.line_time is None or o.line_time <= audit_at):
             via = "identifier_post_audit"
+        elif post_audit_links and post_audit_unit_links:
+            via = "identifier_post_audit_unit"
         else:
             continue
         links.append(Link(o.resource_id, via, o.file_id, o.locator))
@@ -64,8 +68,10 @@ def explicit_links(subject: Subject, audit_at: str, observations: list[Observati
 
 
 def catalog_links(subject: Subject, audit_at: str, activity: list[dict], ownership: OwnershipIndex,
-                  obs_by_rid: dict[str, list[Observation]] | None = None) -> tuple[list[Link], list[str]]:
-    links, rejected = [], []
+                  obs_by_rid: dict[str, list[Observation]] | None = None,
+                  strict_veto: bool = False) -> tuple[list[Link], list[str], list[str]]:
+    """-> (links, rejected, flags). strict_veto restores the original D13: any foreign identity vetoes."""
+    links, rejected, flags = [], [], []
     for a in activity:
         if a["event_type"] != "LINK_RESOURCE_IDENTITY" or a["event_time"] > audit_at:
             continue
@@ -76,85 +82,120 @@ def catalog_links(subject: Subject, audit_at: str, activity: list[dict], ownersh
         if owners and subject.user_id not in owners:
             rejected.append(f"{a['activity_id']} {rid}: observations point to {sorted(owners)}, not {subject.user_id}")
             continue
-        # D11/D13: an observation that shows direct identifiers, none of them the subject's, contradicts the claim.
+        # D13 revised: an observation vetoes the claim only when the identity it shows resolves to another known user.
+        veto = flag = None
         for o in (obs_by_rid or {}).get(rid, []):
             direct = {i for i in o.identifiers_present if i.split(":", 1)[0] in ("email", "phone", "name")}
-            if direct and not (direct & subject.identifiers):
-                rejected.append(f"{a['activity_id']} {rid}: {o.file_id} shows other identifiers {sorted(direct)[:2]}")
+            if not direct or direct & subject.identifiers:
+                continue
+            others = ownership.resolver.owners_of(direct) - {subject.user_id}
+            if others or strict_veto:
+                veto = f"{a['activity_id']} {rid}: {o.file_id} shows {sorted(others) or sorted(direct)[:2]}"
                 break
-        else:
-            links.append(Link(rid, "catalog", a["activity_id"], a["details"][:80]))
-    return links, rejected
+            flag = f"{a['activity_id']} {rid}: identity-mismatch, {o.file_id} shows {sorted(direct)[:2]} (resolves to no known user)"
+        if veto:
+            rejected.append(veto)
+            continue
+        if flag:
+            flags.append(flag)
+        links.append(Link(rid, "catalog", a["activity_id"], a["details"][:80]))
+    return links, rejected, flags
 
 
-STATUS_RESULT = {"COMPLETE": "SUCCESS", "PARTIALLY_COMPLETE": "PARTIAL", "NOT_STARTED": "FAILED"}  # ASSUMPTION, fits 7/7 checked samples
-WORKER_ACTIONS = {"DELETE_RECORD", "ANONYMIZE_RECORD", "REDACT_RECORD", "DISABLE_DATA_FLOW", "BLOCK_RESTORE"}
+# D20 (L2). Bounds are minutes relative to reported_at, calibrated label-free on eval identifier links
+# (account deletes p1..p99 = -74.8..-44.0, policy follow-ups -29.0..-2.9); +10 covers worker reports after reported_at.
+ACCOUNT_WINDOW = (-80, 10)
+FOLLOWUP_WINDOW = (-35, 0)      # [lo, hi): follow-ups run before the workflow reports
+RESULT_OK = {"COMPLETE": {"SUCCESS"}, "NOT_STARTED": {"FAILED"}, "PARTIALLY_COMPLETE": {"PARTIAL", "SUCCESS"}}
+FOLLOWUP_ACTIONS = {"ANONYMIZE_RECORD", "REDACT_RECORD", "DELETE_RECORD", "DISABLE_DATA_FLOW", "BLOCK_RESTORE", "RETAIN_RECORD"}
+
+
+def _minutes(a: str, b: str) -> float:
+    from datetime import datetime
+    p = lambda s: datetime.fromisoformat(s.replace("Z", "+00:00"))  # noqa: E731
+    return (p(a) - p(b)).total_seconds() / 60
 
 
 class TimingLinker:
-    """D3/D15: link deletion_worker activity to a request only when the assignment is unique.
+    """D20 (L2): link deletion_worker events to requests by schedule, globally, only when unique.
 
-    Step 1: account DELETE_RECORD events in [requested_at, reported_at] whose reported_result matches
-            the request's reported_status, minus accounts observed to belong to someone else;
-            iterate unique assignments across *all* requests until stable.
-    Step 2: other worker actions in (assigned account event, reported_at] of exactly one assigned request.
+    Pool: requests that authorize deletion and resolve to a subject (eval + sample request rows, never answers).
+    Account DELETE events: event in ACCOUNT_WINDOW of reported_at, result compatible with reported_status,
+      not observed to belong to another user, and the subject owns no account through identifier evidence.
+    Follow-up actions on other resources: event in FOLLOWUP_WINDOW, no result filter, not observed to belong to
+      another user, and the subject has no resource of that type yet (owned or assigned). A resource owned
+      only by people without a request goes to nobody.
+    Elimination repeats until stable; ambiguous events are logged with their candidates, never tie-broken.
     """
 
     def __init__(self, requests: list[dict], activity: list[dict], ownership: OwnershipIndex,
-                 resolver: IdentityResolver):
+                 resolver: IdentityResolver, authorizes=lambda text: True):
         self.assigned: dict[str, list[Link]] = defaultdict(list)
         self.ambiguous: dict[str, list[str]] = defaultdict(list)
-        worker = [a for a in activity if a["source_system"] == "deletion_worker" and a["event_type"] in WORKER_ACTIONS]
-        accounts = [a for a in worker if a["event_type"] == "DELETE_RECORD" and vocab.resource_prefix(a["resource_id"]) == "account"]
-        subj_of: dict[str, str | None] = {}
+        self.uid: dict[str, str] = {}
+        pool = []
         for r in requests:
             s, _ = resolver.resolve(r["email"])
-            subj_of[r["case_id"]] = s.user_id if s else None
+            if s and authorizes(r["request_text"]):
+                self.uid[r["case_id"]] = s.user_id
+                pool.append(r)
+        self.requesting = set(self.uid.values())
+        self.owned_by: dict[str, set[str]] = defaultdict(set)
+        for rid, users in ownership.owners.items():
+            if len(users) == 1:
+                self.owned_by[next(iter(users))].add(rid)
+        self.ownership = ownership
+        self.taken: dict[str, set[str]] = defaultdict(set)   # user -> resource ids assigned by timing
+        worker = [a for a in activity if a["source_system"] == "deletion_worker"]
+        accounts = [a for a in worker if a["event_type"] == "DELETE_RECORD" and vocab.resource_prefix(a["resource_id"]) == "account"]
+        followups = [a for a in worker if a["event_type"] in FOLLOWUP_ACTIONS and vocab.resource_prefix(a["resource_id"]) != "account"]
+        self._solve(pool, accounts, ACCOUNT_WINDOW, True, "account delete in request schedule")
+        self._solve(pool, followups, FOLLOWUP_WINDOW, False, "worker follow-up in request schedule")
 
-        cands: dict[str, list[dict]] = {}
-        for r in requests:
-            want = STATUS_RESULT.get(r["reported_status"])
-            uid = subj_of[r["case_id"]]
-            cands[r["case_id"]] = [
-                a for a in accounts
-                if r["requested_at"] <= a["event_time"] <= r["reported_at"] and a["reported_result"] == want
-                and not (ownership.owners.get(a["resource_id"]) and uid not in ownership.owners[a["resource_id"]])
-            ]
-        # Accounts observed to belong to the request's own subject are assigned first.
-        account_event: dict[str, dict] = {}
-        for r in requests:
-            uid = subj_of[r["case_id"]]
-            own = [a for a in cands[r["case_id"]] if uid and uid in ownership.owners.get(a["resource_id"], set())]
-            if len(own) == 1:
-                account_event[r["case_id"]] = own[0]
+    def _slot_full(self, user: str, rid: str) -> bool:
+        prefix = vocab.resource_prefix(rid)
+        return any(vocab.resource_prefix(x) == prefix for x in self.owned_by[user] | self.taken[user])
+
+    def _solve(self, pool, events, window, is_account, locator):
+        lo, hi = window
+        cands: list[tuple[dict, list[str]]] = []
+        for a in events:
+            rid = a["resource_id"]
+            owners = self.ownership.owners.get(rid, set())
+            if owners and not owners & self.requesting:
+                continue  # belongs to someone without a deletion request
+            cs = []
+            for r in pool:
+                u = self.uid[r["case_id"]]
+                off = _minutes(a["event_time"], r["reported_at"])
+                if not (lo <= off <= hi if is_account else lo <= off < hi):
+                    continue
+                if owners and u not in owners:
+                    continue
+                if is_account and a["reported_result"] not in RESULT_OK.get(r["reported_status"], set()):
+                    continue
+                cs.append(r["case_id"])
+            if cs:
+                cands.append((a, cs))
+        done: set[str] = set()
         changed = True
         while changed:
             changed = False
-            taken = {e["activity_id"] for e in account_event.values()}
-            for cid, cs in cands.items():
-                if cid in account_event:
+            for a, cs in cands:
+                rid = a["resource_id"]
+                if a["activity_id"] in done or any(rid in t for t in self.taken.values()):
                     continue
-                free = [a for a in cs if a["activity_id"] not in taken]
-                if len(free) == 1:
-                    account_event[cid] = free[0]
-                    taken.add(free[0]["activity_id"])
+                live = [c for c in cs if rid in self.owned_by[self.uid[c]] or not self._slot_full(self.uid[c], rid)]
+                if len(live) == 1:
+                    c = live[0]
+                    self.assigned[c].append(Link(rid, "timing", a["activity_id"], locator))
+                    self.taken[self.uid[c]].add(rid)
+                    done.add(a["activity_id"])
                     changed = True
-        for cid, cs in cands.items():
-            if cid not in account_event and len(cs) > 1:
-                self.ambiguous[cid].append(f"{len(cs)} candidate account events: {[a['resource_id'] for a in cs][:6]}")
-        req_by_id = {r["case_id"]: r for r in requests}
-        for cid, ev in account_event.items():
-            self.assigned[cid].append(Link(ev["resource_id"], "timing", ev["activity_id"], "account delete in request window"))
-
-        # Step 2: follow-up actions on other resources.
-        windows = {cid: (ev["event_time"], req_by_id[cid]["reported_at"]) for cid, ev in account_event.items()}
-        for a in worker:
-            if vocab.resource_prefix(a["resource_id"]) == "account":
+        for a, cs in cands:
+            if a["activity_id"] in done or any(a["resource_id"] in t for t in self.taken.values()):
                 continue
-            owners_ok = lambda cid: not (ownership.owners.get(a["resource_id"]) and subj_of[cid] not in ownership.owners[a["resource_id"]])  # noqa: E731
-            hits = [cid for cid, (lo, hi) in windows.items() if lo < a["event_time"] <= hi and owners_ok(cid)]
-            if len(hits) == 1:
-                self.assigned[hits[0]].append(Link(a["resource_id"], "timing", a["activity_id"], "worker action after assigned account delete"))
-            elif len(hits) > 1:
-                for cid in hits:
-                    self.ambiguous[cid].append(f"{a['activity_id']} {a['resource_id']} shared by {len(hits)} request windows")
+            live = [c for c in cs if a["resource_id"] in self.owned_by[self.uid[c]] or not self._slot_full(self.uid[c], a["resource_id"])]
+            if len(live) > 1:
+                for c in live:
+                    self.ambiguous[c].append(f"{a['activity_id']} {a['resource_id']} candidates {live}")
