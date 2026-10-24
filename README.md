@@ -21,7 +21,7 @@ decision log to `.work/runs/latest/`.
 
 Windows (PowerShell): `py -m venv .venv; .venv\Scripts\pip install -r code\requirements.txt; .venv\Scripts\python code\main.py`
 
-Expected result: config sha256 `23f3756663ed21faee986f397344a1c43e7479dfe540764dc570fba87c1e6aa9`, `output.csv` sha256
+Expected result: config sha256 `58e1afb22468840b7d0f567291d1b684a6c1ab6cb4fa3270e528d2f566264604`, `output.csv` sha256
 `774aa9ca3e0073383fc9251ce17217b684c4b06161c5385c712945a420d1cb1f`.
 
 ### Other commands

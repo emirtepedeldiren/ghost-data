@@ -169,7 +169,7 @@ corroboration (e.g. `CHECK_DATA_FLOW … remains enabled` agreeing with a connec
 **Absence by omission (Round 1, rule (c), `--absence-rule fallback_delete`, default).** A snapshot that lists a collection and
 omits the resource proves ABSENT **only if** (1) there is no explicit observation of the resource `<= audit_at`, and (2) the
 resource's policy is DELETE. Omission from a partial snapshot can show deletion, never that a retained or redacted record is gone.
-Rejected alternatives, measured on the tuning split, are in evaluation_report.md §3.1. Explicit observations come first, so
+Rejected alternatives, measured on the tuning split, are in evaluation_report.md §5.2. Explicit observations come first, so
 the evidence cited for absence is the latest explicit 404 / NOT_FOUND / rows=0 file, and a snapshot only when none exists
 (rule R4, 8/8 fit). Each copy is its own **store**: a replica table is not cleared by a primary-store snapshot.
 
@@ -276,7 +276,7 @@ support is not a field of the Gemini models API, so it is taken from the pricing
 | Use | Model in `config.toml` | List price in / out per 1M tokens | Status |
 |---|---|---|---|
 | intent (S2) | `gemini-2.5-flash`, **batched** (80 texts per call, 5 calls for 398 unique texts) | $0.30 / $2.50 | **D18 approved** |
-| screenshots (S4) | `gemini-3.5-flash-lite` (won the D17 comparison) | $0.30 / $2.50 | chosen by data (evaluation_report.md §4.2) |
+| screenshots (S4) | `gemini-3.5-flash-lite` (won the D17 comparison) | $0.30 / $2.50 | chosen by data (evaluation_report.md §5.4) |
 
 D17 approved `gemini-3.8-flash` for intent; it timed out on every request on 2026-10-24. `gemini-3.6-flash` then hit the
 free-tier quota (20 requests/day/model). On the free tier a run is feasible only with batching and the cache.
@@ -408,7 +408,7 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
     their candidates and never tie-broken (order, jitter and case_id were checked and are not signals).
   - Calibration without labels (eval identifier-linked worker events): account deletes p1..p99 = -74.8..-44.0 min; policy
     follow-ups -29.0..-2.9 min. Two account events fall outside, and both belong to a different request by the same subject.
-    The bounds are unchanged (evaluation_report.md §3.6).
+    The bounds are unchanged (evaluation_report.md §5.1).
 - **D21 (D12b).** Ownership from post-audit units whose own timestamp is after T. Such a link produces a step only from a
   state observation `<= T`, and never a fix-2 verification.
 - **D22.** A backup observed `<= T` that holds one of the subject's identifiers, with no restore state observed `<= T`, is
@@ -449,7 +449,7 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
 - **D28 (rejected):** request scoping for `account_6523` (case_17). It fixes 1 tuning step and changes 0 eval outputs: fitting, not generalizing.
 - **D29 (rejected):** a deterministic tie-break that assigns interchangeable twin resources to one candidate request. An audit tool must not
   attribute another person's data to a requester.
-- **Freeze:** `code/config/frozen_v1.toml` (sha256 `23f3756663ed21faee986f397344a1c43e7479dfe540764dc570fba87c1e6aa9`) pins the models, prompt
+- **Freeze:** `code/config/frozen_v1.toml` (sha256 `58e1afb22468840b7d0f567291d1b684a6c1ab6cb4fa3270e528d2f566264604`) pins the models, prompt
   hashes, L2 thresholds, intent batch size and pipeline flags. `python3 code/main.py` loads it by default and aborts on any mismatch with
   the code. The run is cache-only: the 17 needed responses (16 production, 1 evaluation) are committed in `code/llm_cache/` with their
   original call-log rows in `code/llm_cache/calls.jsonl`. A cache miss raises `CacheMiss` and aborts the run; no key is needed.

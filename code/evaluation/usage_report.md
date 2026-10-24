@@ -53,4 +53,4 @@ The participant evaluation cases E1-E3 (`code/evaluation/custom_cases.py`) neede
 
 ## Development calls (context, not the final run)
 
-Before the freeze, development also used 16 calls on `gemini-3.6-flash` (unbatched intent, abandoned at the free-tier quota) and 11 calls on `gemini-2.5-flash` (the screenshot model comparison, D17). They are listed in `evaluation_report.md` §6 and did not contribute to `output.csv`.
+Before the freeze, development also used 16 calls on `gemini-3.6-flash` (unbatched intent, abandoned at the free-tier quota) and 11 calls on `gemini-2.5-flash` (the screenshot model comparison, D17). They are listed in `evaluation_report.md` §10 and did not contribute to `output.csv`.

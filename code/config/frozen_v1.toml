@@ -24,7 +24,7 @@ intent = { path = "code/prompts/intent.md", sha256 = "8979ac713ffc8153a8e92d0db1
 vision = { path = "code/prompts/vision_extract.md", sha256 = "826c80757f36441edf09d0da487a589fb97333744246f28305a511ce52f905c2" }
 
 [thresholds]
-# D20 (L2 timing linker), minutes relative to reported_at; calibrated without labels (evaluation_report.md §3.6).
+# D20 (L2 timing linker), minutes relative to reported_at; calibrated without labels (evaluation_report.md §5.1).
 account_window_min = [-80, 10]
 followup_window_min = [-35, 0]
 intent_batch_size = 80

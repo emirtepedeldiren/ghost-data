@@ -481,3 +481,75 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-24T15:16:23Z] Round 4: manual-audit dossier for 15 sampled eval cases
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Phase 4 accepted — frozen, reproducible, packaged, merged. Not submitting yet: 518 eval rows have never been checked by a human, and L2 alone changed 160 of them.
+
+ROUND 4 — manual audit of eval outputs (the playbook's "read 10 random rows" check, scaled up)
+REQUEST: pick 15 eval cases mechanically (seed 2026, excluding the 32 samples), stratified: 6 INCOMPLETE, 4 COMPLETE, 2 NOT_APPLICABLE, and 3 cases whose steps changed under D20 (L2 timing links). For each case show, compactly:
+  - the request row (status claims, audit_at, request text)
+  - resolved identifiers (current + historical) and where each came from
+  - every resource linked to the person, with its link source (identifier / L2 timing / catalog) and its state evidence (file_id + the exact line, captured_at)
+  - the produced steps_json
+Do not judge them yourself in this step — I will read them and report findings in the usual format.
+
+ACCEPTANCE: 15 cases shown, selection method stated, no code changes. Commit not needed this turn.
+
+Agent Response Summary:
+Selected 15 eval cases mechanically with random.Random(2026): 3 from the 160 cases whose steps changed under D20 (Round 1 run vs +D20 run), then 6 INCOMPLETE, 4 COMPLETE and 2 NOT_APPLICABLE from the rest of the frozen output. A read-only scratchpad script built each case's dossier from the frozen run's decision log and the raw evidence. Each dossier has the request row, the current identity row and audit-log history, every linked resource with its link sources (and the identifier-carrying trace line for log links), its state evidence (exact line, or the snapshot locator for absence by omission) with captured_at, and the produced steps. The full dossier is in .work/round4_audit.md. No judgement given, no code changes, no commit.
+
+Actions:
+* Scratchpad r4_audit.py (selection + dossier); wrote .work/round4_audit.md (gitignored)
+* Read the frozen decision log, output.csv, evidence manifest and raw evidence units; no API calls
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-10-24T15:24:53Z] Round 4 findings 1-3 investigated; manual-audit section; report outline
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Round 4 audit read case by case. No definite error found — ordering correct in all 15, historical-email resolution correct in 5 (160, 199, 378, 489, 532), uppercase match correct (416), and "claims are not proof" behaves as intended (199: SUCCESS claim but account still present; 459: COMPLETE claim but restore risk). Three suspicions need evidence before I accept the output.
+
+FINDING 1 — omission scope
+EVIDENCE: case_309 (account_4319) and case_476 (account_3510) are ABSENT by omission from a single sub-store of the cited file (customer_data_replica_ap_south; snapshots[1]). Several COMPLETE verdicts (309, 506) rest on replica-only omission.
+MY HYPOTHESIS: if another store in the same file holds the record, we wrongly conclude ABSENT.
+REQUEST:
+  a) Confirm that every omission-based ABSENT requires the resource to be missing from ALL stores of that category in the cited file — show the code path.
+  b) Eval distribution of ABSENT proofs: explicit (404 / rows=0 / profile null) vs omission-primary vs omission-replica-only, and the same breakdown for the 24 tuning gold ABSENT steps. If replica-only omission is common in our eval output but absent from gold, report it — do not fix yet.
+
+FINDING 2 — post-audit line contradicting state
+EVIDENCE: case_114 — evidence_11 (captured 08-24, after audit) has trace tr-8691443 with line 56 at 08-22T10:54:37, before audit_at 11:00, mentioning account_4833. We say ABSENT based on the 08-19 snapshot.
+REQUEST: show what that trace says about account_4833's state. Then count, across all 518 cases, resources where a post-audit file contains a line timestamped ≤ audit_at that contradicts our state. Report the count and 3 examples. No fix yet.
+
+FINDING 3 — fix-2 verifications for post-audit-linked records
+EVIDENCE: audit_record_6504 (case_114) and audit_record_1372 (case_489) get VERIFY_RECORD_PRESENT with no state observation, linked only via a post-audit file.
+REQUEST: show the gold steps for account_3960 and audit_record_4902 in sample case_09 (the D12 precedent). Confirm our behavior matches them exactly.
+
+REPORT QUALITY — in the same turn:
+  1. Add a "Manual audit of eval outputs (Round 4)" section to evaluation_report.md: selection method (seed, strata), what was checked, findings 1–3 and their outcome.
+  2. Show me the full outline of evaluation_report.md (all headings) plus its first section verbatim, so I can review structure and the executive summary.
+
+ACCEPTANCE: answers to findings 1–3 with evidence, the new section written, the outline shown. Commit and push.
+
+Agent Response Summary:
+F1: omission proves ABSENT only when no explicit observation exists in any store of any file at or before audit_at (reconstruct.py _state); 0 of 329 eval ABSENT states have the resource present in another store of the cited file. Eval proofs: explicit 135, omission-primary 130, replica-only 64 (all accounts, 18 COMPLETE cases cite one). Tuning gold cites explicit 5, omission-primary 3, replica-only 0, so replica-only omission is reported as a weak, unconfirmed proof and not fixed. F2: trace tr-8691443 says 404 for account_4833, which agrees. Across 518 cases, 438 agree and 4 differ only because the post-audit line is older than our explicit 404; the 118 stateless retained records already get VERIFY_RECORD_PRESENT. F3: sample case_09 steps_json is identical to gold, including VERIFY_RECORD_PRESENT for post-audit-linked audit_record_4902. Wrote evaluation_report.md section 7 (manual audit) plus a new limitation, renumbered later sections and fixed stale section references. The frozen config comment changed, so its sha256 is now 58e1afb2...; output.csv is unchanged (774aa9ca...).
+
+Actions:
+* Scratchpad r4_f1.py / r4_f2.py (read-only analyses); grep of evidence_11 and the case_09 gold comparison
+* Edited code/evaluation/evaluation_report.md (section 7, limitation, summary, renumbering), code/CONTRACT.md refs, code/config/frozen_v1.toml comment, README/CONTRACT/report hash, code/tools/usage_report.py (regenerated usage_report.md)
+* Re-ran frozen pipeline (output byte-identical), unit tests, validator; rebuilt code.zip; git commit and push; no API calls
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

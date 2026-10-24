@@ -18,6 +18,8 @@ Final version (frozen run `frozen_v1`, 2026-10-24). All numbers come from the fr
   and 1 is unreachable (its id is in no participant file). There is 1 extra step (`account_6523`, D28).
 - **Holdout vs tuning:** the holdout improved at the same rate as tuning across the rounds (sequence 12.5 → 62.5%), which is the
   main evidence that the rules generalize.
+- **Manual audit (Round 4):** 15 mechanically sampled eval outputs were read case by case; no definite error was found, and three
+  suspicions were checked against the evidence (§7).
 
 ## 1. How we measure
 
@@ -70,7 +72,7 @@ The holdout numbers are therefore somewhat optimistic. After the freeze, no rule
   requests (case_533–542: access, export, correction, marketing opt-out, "do not delete").
 - Identity: 418 request emails match a current identity, 100 only a historical one.
 - Output: `output.csv` sha256 `774aa9ca3e0073383fc9251ce17217b684c4b06161c5385c712945a420d1cb1f`, produced by config sha256
-  `23f3756663ed21faee986f397344a1c43e7479dfe540764dc570fba87c1e6aa9`.
+  `58e1afb22468840b7d0f567291d1b684a6c1ab6cb4fa3270e528d2f566264604`.
 
 ## 3. Results round by round (before → after)
 
@@ -259,12 +261,43 @@ unchanged on synthetic request rows over the real dataset, with the frozen confi
 
 E1–E3 needed 1 extra intent call, in its own batch so the production batches stayed valid. Its response is cached, so re-runs cost 0 (`usage_report.md`).
 
-## 7. Known limitations
+## 7. Manual audit of eval outputs (Round 4)
+The eval set has no labels, and D20 alone changed the steps of 160 eval cases, so a person read a sample of eval outputs before submission.
+
+**Selection (mechanical).** `random.Random(2026)` over the 518 eval cases (none is a sample case), in numeric order:
+- first 3 cases from the 160 whose steps changed under D20: case_160, 309, 459;
+- then, from the rest, by frozen status: 6 INCOMPLETE (case_114, 199, 416, 476, 489, 508), 4 COMPLETE (case_378, 506, 516, 532) and
+  2 NOT_APPLICABLE (case_540, 542).
+
+**What was checked per case.**
+- The request row (status claim, `audit_at`, text) and the intent.
+- The resolved identifiers, with their source (the `user_identities.csv` row; each `user_audit_log.csv` entry).
+- Every linked resource with its link sources (identifier with the trace line that names the person, L2 timing activity, catalog
+  claim, post-audit file).
+- Its state evidence (exact line, or the snapshot that omits it) with `captured_at`, and the produced `steps_json`.
+
+**Result.**
+- No definite error.
+- Ordering is correct in all 15.
+- Historical-email resolution is correct in 5 (case_160, 199, 378, 489, 532), and the uppercase email in case_416 matches.
+- "Claims are not proof" behaves as intended: in case_199 a SUCCESS delete claim faces an account still present (200 on 07-13); in
+  case_459 a COMPLETE claim faces a restorable backup.
+- Three suspicions were investigated with evidence:
+
+| # | Suspicion | Evidence | Outcome |
+|---|---|---|---|
+| 1 | Absence by omission from one sub-store (a replica table, one bundle snapshot) could miss a copy held in another store of the same file | Code: `reconstruct.py` `_state` uses omission only when **no** explicit observation of the resource exists `<= audit_at` in **any** store of **any** file; a row in another store would itself be a PRESENT observation. Empirically, 0 of 329 eval ABSENT states have the resource present in another store of the cited file. Distribution of ABSENT proofs: eval: explicit (404 / rows=0 / profile null) 135, omission from a primary snapshot 130, omission from replica tables only 64; tuning gold (cited): explicit 5, omission-primary 3, **replica-only 0**. All 64 replica-only cases are accounts in SQL captures whose `customer_profiles` collection exists only in the replica table, as a single drifted row of another account; the primary table holds no profiles. 18 COMPLETE eval cases cite such an omission (in none is it the only step). In the 2 tuning cases that rely on it (case_18, case_22), the gold has the same VERIFY_RECORD_ABSENT as a future step with empty evidence, so the gold neither confirms nor rejects this proof. | Hypothesis refuted for the stated mechanism. Replica-only omission is a **weak but unrefuted** proof: common in our output, never cited by gold. Not changed (§8). |
+| 2 | A post-audit file can contain a line timestamped `<= audit_at` that contradicts our state (case_114: evidence_11, captured 08-24, trace tr-8691443 at 08-22T10:54) | The trace's state line (line 58) is `resource_id="account_4833" event="profile_lookup_completed" rows="0" http_status="404"`, which **agrees** with our ABSENT. Across all 518 cases: 438 such lines agree with our state. 4 differ (case_126, 326, 374, 430), but each is a bundle snapshot of the account from 6–8 days **before** our newer explicit 404 (the account was deleted in between), so none is newer than our evidence. 118 records with no state `<= audit_at` (116 audit records, 2 legal holds, all INCOMPLETE cases) have a post-audit line showing them RETAINED; all 118 already get VERIFY_RECORD_PRESENT (fix 2). | No contradiction. Using pre-audit lines from post-audit files would change 0 outputs. Not changed. |
+| 3 | Fix-2 verifications for records linked only through a post-audit file (audit_record_6504 in case_114, audit_record_1372 in case_489) | The D12 precedent, sample case_09: `audit_record_4902` is linked only through evidence_06 (captured 09-18, after audit_at 09-16) and has no state observation. Gold step 4 is `VERIFY_RECORD_PRESENT security_service/audit_record_4902 PRESENT ""`, and `account_3960` is `VERIFY_RECORD_ABSENT … ""`. Our case_09 `steps_json` is **identical** to gold. | Behaviour matches the gold precedent exactly. Not changed. |
+
+## 8. Known limitations
+- **Absence by omission from replica tables only (Round 4, finding 1).** 64 eval account ABSENT states (cited in 18 COMPLETE cases)
+  rest on omission from a replica table that lists only drifted rows. No gold example cites this kind of proof, so it is unconfirmed.
 - **Interchangeable twin resources (7 tuning steps, D29).** When several requests share a `reported_at` slot and their resources carry no
   identifiers anywhere, the data cannot tell them apart: `account_410` {case_23, 547, 548}, `account_7012` {28, 29}, `analytics_9406` {03, 44},
   `analytics_5335` {21, 23, 546, 547, 548}, `analytics_1895`/`analytics_4566` {24, 25, 26, 549, 550}, `analytics_4574` {27, 28}. They stay unlinked.
 - **Unreachable gold (1 tuning step, 1 holdout step):** `audit_record_6645` and `audit_record_5569` are in no participant file.
-- **Known extra step (D28):** `account_6523` in case_17. It belongs to the same person's earlier request (case_46); see §8.
+- **Known extra step (D28):** `account_6523` in case_17. It belongs to the same person's earlier request (case_46); see §9.
 - **No observable records (D27).** A deletion subject with nothing observable `<= audit_at` gets COMPLETE with `[]`. This is logged as
   `NO_OBSERVABLE_RECORDS` and flagged by the validator. 0 of 518 eval rows hit it (E4 does, by construction).
 - **Assumed conditions.** 323 audit records and 3 legal holds have no stated end date, so rule_12/13 are assumed met (logged, D23).
@@ -275,7 +308,7 @@ E1–E3 needed 1 extra intent call, in its own batch so the production batches s
 - **Activity-only proposals without observation** (`object_19`, `tombstone_17`) produce no step (D14).
 - **Frozen to this dataset's cache.** A new dataset needs live calls (`--live`, a key in `.env`) to fill the cache for its texts and screenshots.
 
-## 8. Rejected decisions
+## 9. Rejected decisions
 | Decision | Proposal | Why rejected |
 |---|---|---|
 | D28 | Request scoping: a resource seen only before a person's earlier request belongs to that request (would drop `account_6523` from case_17) | It fixes 1 tuning step and changes 0 eval outputs. A rule whose only effect is matching a sample is fitting, not generalizing. |
@@ -285,7 +318,7 @@ E1–E3 needed 1 extra intent call, in its own batch so the production batches s
 | Round 1 | Scope-aware absence rule (a) and fallback rule (b) | Measured worse than (c) (§5.2). |
 | D17 | gemini-2.5-flash for screenshots | Lower id recall, more noise, 3.6× the cost (§5.4). |
 
-## 9. Token usage
+## 10. Token usage
 The final run made **0 live API calls**; its usage is that of the 16 original calls behind the cached responses (`usage_report.md`).
 Development calls, for context:
 
