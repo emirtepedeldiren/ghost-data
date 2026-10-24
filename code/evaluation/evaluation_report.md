@@ -5,21 +5,60 @@ Final version (frozen run `frozen_v1`, 2026-10-24). All numbers come from the fr
 
 ## 0. Summary
 
-| Split | Cases | Status accuracy | Step precision | Step recall | Step F1 | Field accuracy (each field) | Sequence accuracy |
-|---|---|---|---|---|---|---|---|
-| Tuning | 24 | **100.00%** | **99.30%** | **94.63%** | **96.91%** | **94.00%** | **62.50%** |
-| Holdout (D16) | 8 | **100.00%** | **100.00%** | **90.91%** | **95.24%** | **90.91%** | **62.50%** |
-| All samples | 32 | 100.00% | 99.45% | 93.78% | 96.53% | 93.30% | 62.50% |
+**Approach in 5 lines.**
+1. **Deterministic core.** Identity resolution (current + historical identifiers), parsers for six evidence formats into one
+   observation schema, linking, state at `audit_at`, policy, and contract ordering. Every step traces to an evidence line.
+2. **LLM only where text or pixels must be read:** request intent (multilingual, negations, partial scopes; `gemini-2.5-flash`, 5 batched
+   calls) and 11 application screenshots (`gemini-3.5-flash-lite`). Everything else needs exact, auditable rules, so it is code.
+3. **Claims are not evidence.** Workflow statuses and activity rows may *propose* a link but never set a state or a citation. State is
+   the latest observation captured `<= audit_at`; a later file may show who owns a record, never its state.
+4. **Identifier-free records** are linked through the deletion worker's schedule (rule L2), and only when exactly one request fits.
+   Another person's data is never attributed to a requester.
+5. **Frozen and reproducible.** The config is pinned by hash and the run is cache-only (0 live API calls). A clean clone reproduces
+   `output.csv` byte for byte without an API key.
 
-- **Eval set (518 rows, no labels):** the validator passes with 0 errors and 0 warnings. Statuses: 356 INCOMPLETE, 152 COMPLETE,
-  10 NOT_APPLICABLE.
-- **Participant evaluation cases:** E1–E5 pass, 5/5 (§6).
-- **What is left on tuning:** 8 missing gold steps. 7 are interchangeable "twin" resources that we deliberately leave unlinked (D29),
-  and 1 is unreachable (its id is in no participant file). There is 1 extra step (`account_6523`, D28).
-- **Holdout vs tuning:** the holdout improved at the same rate as tuning across the rounds (sequence 12.5 → 62.5%), which is the
-  main evidence that the rules generalize.
-- **Manual audit (Round 4):** 15 mechanically sampled eval outputs were read case by case; no definite error was found, and three
-  suspicions were checked against the evidence (§7).
+**Results on the 32 labelled samples** (tuning = the 24 cases rules were developed on; holdout = 8 cases frozen before any tuning, D16):
+
+| Split | Cases | Status accuracy | Row accuracy | Step P / R / F1 | Field accuracy | Order on matched steps | Sequence accuracy |
+|---|---|---|---|---|---|---|---|
+| Tuning | 24 | **100.00%** | **62.50%** | **99.30 / 94.63 / 96.91%** | 94.00% (every field, §2.1) | **100%** (530/530 pairs) | **62.50%** |
+| Holdout ¹ | 8 | **100.00%** | **62.50%** | **100.00 / 90.91 / 95.24%** | 90.91% (every field, §2.2) | **100%** (95/95 pairs) | **62.50%** |
+| All samples | 32 | 100.00% | 62.50% | 99.45 / 93.78 / 96.53% | 93.30% | 100% (625/625 pairs) | 62.50% |
+
+¹ Small n: each holdout case is 12.5 points of row/sequence accuracy. The holdout is evidence of generalization, not a precise estimate.
+
+- **Row accuracy** = the whole output row matches gold: `deletion_status` **and** the full `steps_json` (all fields, `step_no`, order).
+  It equals sequence accuracy here because status accuracy is 100%, so every case whose steps array is exact also has the right status.
+- **Order on matched steps** = the steps we got right appear in the same relative order as in gold (pairwise concordance; every case with
+  at least 2 matched steps is in gold order). At 100%, every remaining miss is a missing or extra step, not an ordering error.
+- **Field accuracy** is identical across all six fields for the same reason: no aligned step has a wrong state, operation or citation.
+- **What is left on tuning:** 8 missing gold steps (7 interchangeable "twin" resources deliberately left unlinked, D29; 1 id that is in no
+  participant file) and 1 extra step (`account_6523`, D28).
+- **Generalization:** the holdout improved at the same rate as tuning across the rounds (sequence 12.5 → 62.5%, §3).
+
+**Eval set (518 requests, no labels; §2.3).** The validator passes with 0 errors and 0 warnings. **Of the 254 requests the deletion workflow
+reported COMPLETE, the audit finds 165 (65%) still INCOMPLETE**: personal data left in search indexes, replicas, support records,
+active syncs or restorable backups. 10 requests are not deletion requests at all (NOT_APPLICABLE).
+
+**Further checks:** participant cases E1–E5 pass, 5/5 (§6). A manual audit of 15 mechanically sampled eval outputs found no definite
+error (§7).
+
+**Cost:** 16 LLM calls, 73,013 tokens, est. **$0.1046 total, $0.000202 per request** at list price. The final run was served from the
+response cache with 0 live calls (`usage_report.md`).
+
+**Requirement compliance** (README.md and problem_statement.md → where it is):
+
+| Required item | Source | Where |
+|---|---|---|
+| Case-level status accuracy | README, problem statement | §0 table; §2.1–2.2 (by gold status, confusion) |
+| Row accuracy | README | §0 table (defined above); §2.1–2.2 |
+| Step-level accuracy | problem statement | §0 table (P/R/F1); §2.1–2.2 (accuracy, matched counts) |
+| Field-level accuracy | README, problem statement | §2.1–2.2, per field (phase, system_id, resource_id, operation, state, evidence_id) |
+| Sequence accuracy | README, problem statement | §0 table; §2.1–2.2 |
+| At least three additional evaluation cases | README, problem statement | §6: five runnable cases E1–E5 with inputs, expected output, result |
+| Failures found and improvements made | README, problem statement | §3 (before → after per round), §4 (failures and fixes), §5 (A/B), §7 (manual audit) |
+| Usage: providers, models, calls, input/output tokens, total and average tokens per request, total and per-request cost, per-model and overall | README, problem statement | `usage_report.md` |
+| Reports in `code/evaluation/`, metrics written in Markdown | README | this file and `usage_report.md` |
 
 ## 1. How we measure
 
@@ -32,6 +71,9 @@ Final version (frozen run `frozen_v1`, 2026-10-24). All numbers come from the fr
     = matching pairs / (pairs + unpaired gold + unpaired pred). In the final run every field scores the same as the step accuracy,
     because every remaining error is a whole missing or extra step. No aligned step has a wrong state or citation.
   - **Sequence accuracy:** share of cases whose full `steps_json` array (all keys, order and `step_no` included) equals gold.
+  - **Row accuracy:** share of cases whose whole output row equals gold: `deletion_status` and the full `steps_json`.
+  - **Order on matched steps:** for the steps that match gold exactly, the share of step pairs that appear in the same relative order as in
+    gold, and the number of cases whose matched steps appear in exactly the gold order.
 - **Validator:** `python3 code/validate.py --output output.csv`. It checks structure, the phase/operation/state vocabulary, ordering,
   consecutive step numbers, evidence rules, every cited id exists and was captured `<= audit_at`, and NOT_APPLICABLE ⇔ `[]`.
 - **Root-cause attribution:** `python3 code/evaluation/rootcause.py` (tuning split only).
@@ -49,27 +91,54 @@ The holdout numbers are therefore somewhat optimistic. After the freeze, no rule
 (E4) was originally specified as a case_16 clone and was moved to eval case_153 to keep the holdout clean.
 
 ## 2. Final results in detail (frozen_v1)
+Reproduce with `python3 code/main.py --requests dataset/sample_deletion_requests.csv --output .work/samples.csv`, then
+`python3 code/evaluation/main.py --pred .work/samples.csv --split {tuning,holdout,all}`.
 
 ### 2.1 Tuning (24 cases)
 | Metric | Value |
 |---|---|
-| Status accuracy | 100.00% (gold COMPLETE n=8: 100%; gold INCOMPLETE n=16: 100%) |
-| Step-level accuracy / P / R / F1 | 94.00% / 99.30% / 94.63% / 96.91% (matched 141, gold 149, pred 142) |
-| Field-level: phase, system_id, resource_id, operation, state, evidence_id | 94.00% each |
+| Status accuracy | 100.00% (gold COMPLETE n=8: 8/8; gold INCOMPLETE n=16: 16/16) |
+| Row accuracy (status + full steps_json) | 62.50% (15/24) |
 | Sequence accuracy | 62.50% (gold COMPLETE 37.50%, gold INCOMPLETE 75.00%) |
+| Step-level accuracy / precision / recall / F1 | 94.00% / 99.30% / 94.63% / 96.91% (matched 141, gold 149, predicted 142) |
+| Order on matched steps | 100% pairwise (530/530 pairs); 22/22 cases with ≥2 matched steps in gold order |
+
+| Field | phase | system_id | resource_id | operation | state | evidence_id |
+|---|---|---|---|---|---|---|
+| Field accuracy (aligned steps, denominator 150) | 94.00% | 94.00% | 94.00% | 94.00% | 94.00% | 94.00% |
 
 ### 2.2 Holdout (8 cases, aggregate only)
 | Metric | Value |
 |---|---|
 | Status accuracy | 100.00% (gold COMPLETE n=2, gold INCOMPLETE n=6) |
-| Step-level accuracy / P / R / F1 | 90.91% / 100.00% / 90.91% / 95.24% (matched 40, gold 44, pred 40) |
-| Field-level, each field | 90.91% |
-| Sequence accuracy | 62.50% |
+| Row accuracy (status + full steps_json) | 62.50% (5/8; one case = 12.5 points) |
+| Sequence accuracy | 62.50% (gold COMPLETE 0.00%, n=2; gold INCOMPLETE 83.33%, n=6) |
+| Step-level accuracy / precision / recall / F1 | 90.91% / 100.00% / 90.91% / 95.24% (matched 40, gold 44, predicted 40) |
+| Order on matched steps | 100% pairwise (95/95 pairs); 7/7 cases with ≥2 matched steps in gold order |
+
+| Field | phase | system_id | resource_id | operation | state | evidence_id |
+|---|---|---|---|---|---|---|
+| Field accuracy (aligned steps, denominator 44) | 90.91% | 90.91% | 90.91% | 90.91% | 90.91% | 90.91% |
 
 ### 2.3 Eval set (518 cases, no labels)
+**Workflow claim (`reported_status`) vs audit result (`deletion_status`):**
+
+| Workflow reported ↓ / audit found → | COMPLETE | INCOMPLETE | NOT_APPLICABLE | Total |
+|---|---|---|---|---|
+| COMPLETE | 89 | **165** | 0 | 254 |
+| PARTIALLY_COMPLETE | 37 | 115 | 0 | 152 |
+| NOT_STARTED | 26 | 76 | 10 | 112 |
+| **Total** | **152** | **356** | **10** | **518** |
+
+- **65% of "COMPLETE" claims are wrong.** Of the 254 requests the workflow reported COMPLETE, 165 still leave personal data or a
+  recreation path at `audit_at`.
+- **Some failure claims are wrong too.** 37 PARTIALLY_COMPLETE and 26 NOT_STARTED requests are in fact complete: the evidence shows
+  every relevant record treated as policy requires.
+- **NOT_APPLICABLE only where the text asks for something else.** All 10 are request texts asking for access, export, correction or
+  marketing opt-out, or explicitly saying not to delete. The workflow had reported every one of them NOT_STARTED.
+
+Other eval facts:
 - Validator: PASS, 0 errors, 0 warnings. No row hits D27 `NO_OBSERVABLE_RECORDS`.
-- Status distribution: 356 INCOMPLETE / 152 COMPLETE / 10 NOT_APPLICABLE. The 10 NOT_APPLICABLE are exactly the one-off non-deletion
-  requests (case_533–542: access, export, correction, marketing opt-out, "do not delete").
 - Identity: 418 request emails match a current identity, 100 only a historical one.
 - Output: `output.csv` sha256 `774aa9ca3e0073383fc9251ce17217b684c4b06161c5385c712945a420d1cb1f`, produced by config sha256
   `58e1afb22468840b7d0f567291d1b684a6c1ab6cb4fa3270e528d2f566264604`.
@@ -291,8 +360,10 @@ The eval set has no labels, and D20 alone changed the steps of 160 eval cases, s
 | 3 | Fix-2 verifications for records linked only through a post-audit file (audit_record_6504 in case_114, audit_record_1372 in case_489) | The D12 precedent, sample case_09: `audit_record_4902` is linked only through evidence_06 (captured 09-18, after audit_at 09-16) and has no state observation. Gold step 4 is `VERIFY_RECORD_PRESENT security_service/audit_record_4902 PRESENT ""`, and `account_3960` is `VERIFY_RECORD_ABSENT … ""`. Our case_09 `steps_json` is **identical** to gold. | Behaviour matches the gold precedent exactly. Not changed. |
 
 ## 8. Known limitations
-- **Absence by omission from replica tables only (Round 4, finding 1).** 64 eval account ABSENT states (cited in 18 COMPLETE cases)
-  rest on omission from a replica table that lists only drifted rows. No gold example cites this kind of proof, so it is unconfirmed.
+- **Absence by omission from replica tables only (Round 4, finding 1; kept by D30).** 64 eval account ABSENT states (cited in 18 COMPLETE
+  cases) rest on omission from a replica table that lists only drifted rows. No gold example cites this kind of proof, so it is unconfirmed.
+  It was kept because no better evidence exists for these accounts (any explicit observation already takes precedence), and treating them
+  as unknown would drop verification steps from 18 COMPLETE cases with no sign that the gold omits them.
 - **Interchangeable twin resources (7 tuning steps, D29).** When several requests share a `reported_at` slot and their resources carry no
   identifiers anywhere, the data cannot tell them apart: `account_410` {case_23, 547, 548}, `account_7012` {28, 29}, `analytics_9406` {03, 44},
   `analytics_5335` {21, 23, 546, 547, 548}, `analytics_1895`/`analytics_4566` {24, 25, 26, 549, 550}, `analytics_4574` {27, 28}. They stay unlinked.

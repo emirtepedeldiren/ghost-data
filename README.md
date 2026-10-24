@@ -120,10 +120,10 @@ run is served from that cache (`code/evaluation/usage_report.md`).
 
 ## Results
 
-| Split | Status accuracy | Step P / R / F1 | Field accuracy | Sequence accuracy |
-|---|---|---|---|---|
-| Tuning (24 samples) | 100.00% | 99.30 / 94.63 / 96.91% | 94.00% | 62.50% |
-| Holdout (8 samples) | 100.00% | 100.00 / 90.91 / 95.24% | 90.91% | 62.50% |
+| Split | Status accuracy | Row accuracy | Step P / R / F1 | Field accuracy | Order on matched steps | Sequence accuracy |
+|---|---|---|---|---|---|---|
+| Tuning (24 samples) | 100.00% | 62.50% | 99.30 / 94.63 / 96.91% | 94.00% | 100% | 62.50% |
+| Holdout (8 samples) | 100.00% | 62.50% | 100.00 / 90.91 / 95.24% | 90.91% | 100% | 62.50% |
 
 The eval set (518 rows) passes the validator with 0 errors and 0 warnings. Details, A/B comparisons, failures and fixes round by round,
 known limitations and rejected decisions: `code/evaluation/evaluation_report.md`. Tokens and cost: `code/evaluation/usage_report.md`.

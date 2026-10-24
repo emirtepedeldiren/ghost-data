@@ -21,6 +21,13 @@ no prediction is scored as status "<missing>" with no steps.
                     operation, state, evidence_id (plus phase).
   sequence          share of gold cases whose full steps_json array (all fields including
                     step_no, in order) equals the gold array exactly.
+  row               share of gold cases whose whole output row matches: deletion_status AND the
+                    full steps_json array. It equals sequence accuracy whenever every case with an
+                    exact steps array also has the right status.
+  order (matched)   relative order of the steps that match gold (full step tuple): pairwise
+                    concordance over all pairs of matched steps, and the share of cases (with >= 2
+                    matched steps) whose matched steps appear in exactly the gold order. Separates
+                    ordering errors from discovery errors.
 """
 from __future__ import annotations
 
@@ -138,7 +145,8 @@ def case_diff(gold: dict, pred: dict) -> dict:
 
 def score(gold_cases: dict[str, dict], pred_cases: dict[str, dict]) -> dict:
     ids = sorted(gold_cases, key=case_sort_key)
-    status_ok = seq_ok = 0
+    status_ok = seq_ok = row_ok = 0
+    order_pairs = order_concordant = order_cases = order_cases_ok = 0
     by_status: dict[str, Counter] = {}
     confusion: Counter = Counter()
     tp_full = tp_id = n_pred = n_gold = denom = 0
@@ -176,6 +184,18 @@ def score(gold_cases: dict[str, dict], pred_cases: dict[str, dict]) -> dict:
 
         exact = [{k: s.get(k) for k in STEP_KEYS} for s in gs] == [{k: s.get(k) for k in STEP_KEYS} for s in ps]
         seq_ok += exact
+        row_ok += exact and s_ok
+        pred_pos: dict[tuple, int] = {}
+        for i, k in enumerate(map(full, ps)):
+            pred_pos.setdefault(k, i)
+        matched = [k for k in dict.fromkeys(map(full, gs)) if k in pred_pos]   # matched steps in gold order
+        for i in range(len(matched)):
+            for j in range(i + 1, len(matched)):
+                order_pairs += 1
+                order_concordant += pred_pos[matched[i]] < pred_pos[matched[j]]
+        if len(matched) >= 2:
+            order_cases += 1
+            order_cases_ok += matched == sorted(matched, key=pred_pos.get)
         bucket["sequence_ok"] += exact
         if not (exact and s_ok):
             diffs[cid] = case_diff(g, p)
@@ -194,6 +214,9 @@ def score(gold_cases: dict[str, dict], pred_cases: dict[str, dict]) -> dict:
         "field_level": {k: (field_ok[k] / field_denom if field_denom else 1.0) for k in FIELD_METRICS},
         "field_level_denominator": field_denom,
         "sequence_accuracy": seq_ok / n if n else 0.0,
+        "row_accuracy": row_ok / n if n else 0.0,
+        "order_matched": {"pairwise_concordance": order_concordant / order_pairs if order_pairs else 1.0, "pairs": order_pairs,
+                          "cases_in_gold_order": order_cases_ok, "cases_with_2plus_matched": order_cases},
         "case_diffs": diffs,
     }
 
@@ -214,6 +237,10 @@ def print_report(r: dict, max_diff_cases: int) -> None:
     for k, v in r["field_level"].items():
         print(f"    {k:<12} {pct(v)}")
     print(f"\nSequence accuracy          : {pct(r['sequence_accuracy'])}")
+    print(f"Row accuracy (status+steps): {pct(r['row_accuracy'])}")
+    o = r["order_matched"]
+    print(f"Order on matched steps     : pairwise {pct(o['pairwise_concordance'])} ({o['pairs']} pairs); "
+          f"cases in gold order {o['cases_in_gold_order']}/{o['cases_with_2plus_matched']}")
 
     diffs = r["case_diffs"]
     print(f"\nPer-case differences: {len(diffs)} case(s)" + ("" if len(diffs) <= max_diff_cases else f" (showing {max_diff_cases})"))

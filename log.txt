@@ -553,3 +553,41 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-24T15:30:00Z] Report polish: section 0 rewrite, row and order accuracy, claims vs verdicts
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Round 4 accepted. All three suspicions refuted with evidence; finding 1 leaves one documented weak spot.
+
+DECISION D30 (replica-only omission, 64 eval accounts): keep current behavior, documented as a known limitation.
+RATIONALE: the code already prefers any explicit observation, so no better evidence exists for these 64. Treating them as unknown would drop verification steps in 18 COMPLETE cases with no evidence that the gold omits them. Expected loss is higher than expected gain.
+
+Yes — fast-forward main to d588a73 and push.
+
+REPORT POLISH — evaluation_report.md. The AI judge and code judge read §0 first; make it carry the whole story. No pipeline or output changes.
+1. Requirement compliance table at the top of §0: each required item from README and problem_statement.md → where it is in the report. Include "row accuracy" explicitly. README asks for case, row, field and sequence accuracy; define row accuracy as exact match of the whole output row (status + steps_json) and report it as its own column, even if it equals sequence accuracy — then say why.
+2. An "Approach in 5 lines" paragraph at the top of §0: deterministic core, LLM only for intent and screenshots and why, claims-vs-evidence principle, frozen cache-only run.
+3. Field accuracy broken down per field (phase, system_id, resource_id, operation, state, evidence_id) instead of one number — in §0 or §2 with a pointer.
+4. Add order accuracy on matched steps (are the steps we got right in the right relative order?). I expect 100%; that number proves the remaining misses are linking, not ordering.
+5. Small-n caveat next to the holdout row: 8 cases, each case = 12.5 points of sequence accuracy.
+6. §2.3 eval-set story, no labels: a cross-table of reported_status (claim) vs our deletion_status. E.g. "of N requests the workflow reported COMPLETE, X were actually INCOMPLETE". This is the business result the problem statement is about.
+7. One cost line in §0: total tokens, total cost, cost per request, pointing to usage_report.md.
+
+THEN show me, verbatim: the new §0, and the full code/evaluation/usage_report.md.
+ACCEPTANCE: output.csv byte-identical; validator and tests pass; zip rebuilt; commit and push.
+
+Agent Response Summary:
+A fast-forward of main to d588a73 was impossible because of the earlier --no-ff merge commit on main. Instead, main was merged into the branch (no file changes) and main fast-forwarded to cc4cf3f, whose tree equals d588a73; both were pushed. The scorer gained row accuracy (status + full steps_json) and order accuracy on matched steps: tuning and holdout row 62.50% (= sequence, since status is 100%), order 100% (530/530 and 95/95 pairs). evaluation_report.md section 0 was rewritten (approach in 5 lines, results with row/order columns and the small-n caveat, the claims-vs-verdict result of 165 of 254 COMPLETE claims actually INCOMPLETE, the cost line, the requirement compliance table). Section 2 now has per-field accuracy and the cross-table; D30 is recorded in CONTRACT and the limitations. output.csv is byte-identical, tests and validator pass, and code.zip was rebuilt.
+
+Actions:
+* git: merged main into branch, fast-forwarded main to cc4cf3f, pushed both
+* Edited code/evaluation/main.py (row and order metrics), code/evaluation/evaluation_report.md (sections 0, 1, 2, 8), code/CONTRACT.md (D30), README.md (results table)
+* Ran scorer on all splits and on gold vs gold, eval cross-table, frozen run (byte-identical), unit tests, validator, table check; rebuilt code.zip; git commit and push
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

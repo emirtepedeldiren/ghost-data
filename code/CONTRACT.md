@@ -455,3 +455,6 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
   original call-log rows in `code/llm_cache/calls.jsonl`. A cache miss raises `CacheMiss` and aborts the run; no key is needed.
   Output sha256 `774aa9ca3e0073383fc9251ce17217b684c4b06161c5385c712945a420d1cb1f`.
 - Dev artifacts (run logs, decision logs, scratch predictions, the per-call log) live in the gitignored `.work/`, outside `code/`.
+- **D30:** absence by omission from replica tables only (64 eval accounts, 18 COMPLETE cases) is kept and documented as a known limitation
+  (evaluation_report.md §7, §8). Explicit observations already take precedence, so no better evidence exists for these accounts.
+  Treating them as unknown would drop verification steps with no evidence that the gold omits them.
