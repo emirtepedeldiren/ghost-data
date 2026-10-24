@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from contract import DATASET_DIR, WORK_DIR  # noqa: E402
+from contract import DATASET_DIR, WORK_DIR
 
 CACHE = WORK_DIR
 FIELDS = ["case_id", "email", "requested_at", "reported_status", "reported_at", "audit_at", "request_text"]
@@ -88,7 +88,7 @@ def main() -> int:
                  header=(f"custom cases, config frozen_v1 sha256={cfg_hash}",))
     with out_path.open(newline="", encoding="utf-8") as f:
         out = {r["case_id"]: r for r in csv.DictReader(f)}
-    dec = {json.loads(l)["case_id"]: json.loads(l) for l in (run_dir / "decisions.jsonl").open(encoding="utf-8")}
+    dec = {json.loads(line)["case_id"]: json.loads(line) for line in (run_dir / "decisions.jsonl").open(encoding="utf-8")}
     ds = Dataset.load(DATASET_DIR)
     resolver = IdentityResolver(ds.identities, ds.audit_log)
 

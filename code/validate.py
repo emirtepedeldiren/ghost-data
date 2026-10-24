@@ -16,7 +16,7 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from contract import (  # noqa: E402
+from contract import (
     DATASET_DIR,
     OPERATION_PHASE,
     OPERATION_STATE,

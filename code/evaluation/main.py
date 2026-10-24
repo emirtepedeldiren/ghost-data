@@ -40,8 +40,8 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from contract import DATASET_DIR, STEP_FIELDS, STEP_KEYS, case_sort_key  # noqa: E402
-from evaluation.splits import holdout_ids  # noqa: E402
+from contract import DATASET_DIR, STEP_FIELDS, STEP_KEYS, case_sort_key
+from evaluation.splits import holdout_ids
 
 FIELD_METRICS = ("system_id", "resource_id", "operation", "state", "evidence_id", "phase")
 IDENTITY = ("phase", "operation", "system_id", "resource_id")

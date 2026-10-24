@@ -19,6 +19,7 @@ import tomllib
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from typing import Any
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -43,7 +44,7 @@ class LLMResult:
     cached: bool
     raw_usage: dict = field(default_factory=dict)
 
-    def json(self):
+    def json(self) -> Any:
         return json.loads(self.text)
 
 
@@ -59,7 +60,6 @@ def load_dotenv(path: Path = REPO_ROOT / ".env") -> None:
 
 class _Provider:
     name = ""
-    supports_sampling: dict[str, bool]
 
     def call(self, model: str, system: str, prompt: str, images: list[Path], json_schema: dict | None,
              temperature: float | None) -> tuple[str, int, int, dict]:
@@ -78,7 +78,8 @@ class GeminiProvider(_Provider):
         if not self.key:
             raise LLMError("GEMINI_API_KEY is not set")
 
-    def call(self, model, system, prompt, images, json_schema, temperature):
+    def call(self, model: str, system: str, prompt: str, images: list[Path], json_schema: dict | None,
+             temperature: float | None) -> tuple[str, int, int, dict]:
         parts = [{"inlineData": {"mimeType": "image/png", "data": base64.b64encode(p.read_bytes()).decode()}} for p in images]
         parts.append({"text": prompt})
         body = {"contents": [{"role": "user", "parts": parts}], "generationConfig": {}}
@@ -127,7 +128,8 @@ class AnthropicProvider(_Provider):
         self.anthropic = anthropic
         self.client = anthropic.Anthropic()
 
-    def call(self, model, system, prompt, images, json_schema, temperature):
+    def call(self, model: str, system: str, prompt: str, images: list[Path], json_schema: dict | None,
+             temperature: float | None) -> tuple[str, int, int, dict]:
         content = [{"type": "image", "source": {"type": "base64", "media_type": "image/png",
                                                  "data": base64.b64encode(p.read_bytes()).decode()}} for p in images]
         text_prompt = prompt + (f"\n\nRespond with JSON matching this schema:\n{json.dumps(json_schema)}" if json_schema else "")

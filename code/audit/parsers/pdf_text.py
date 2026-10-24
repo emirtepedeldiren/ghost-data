@@ -10,7 +10,7 @@ from pathlib import Path
 
 from audit import vocab
 from audit.identity import extract_identifiers
-from audit.model import Observation
+from audit.model import Observation, ParseResult
 from audit.parsers.common import parse_time, resource_ids_in
 
 ORIGIN_CATEGORY_HINT = {
@@ -34,10 +34,10 @@ def _retain_until(text: str, rid: str) -> str | None:
     return parse_time(" ".join(m.group(1).split())) if m else None
 
 
-def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str]):
+def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str]) -> ParseResult:
     try:
         text = extract_text(path)
-    except Exception as e:  # noqa: BLE001 - a broken PDF must not stop the run
+    except Exception as e:
         return [], [], [f"{file_id} {path.name}: PDF text extraction failed ({type(e).__name__})"]
     idents = frozenset(extract_identifiers(text, unique_names))
     rids = resource_ids_in(text)

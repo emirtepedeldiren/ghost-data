@@ -67,7 +67,7 @@ class LogDialects(unittest.TestCase):
         }
         for dialect, line in samples.items():
             with self.subTest(dialect=dialect):
-                ts, service, trace, event, fields, got = parse_line(line)
+                _ts, _service, _trace, event, fields, got = parse_line(line)
                 self.assertEqual(got, dialect)
                 self.assertTrue(event)
                 self.assertTrue(vocab.resource_prefix(fields["resource_id"]))
@@ -130,7 +130,7 @@ class TimingLinkerL2(unittest.TestCase):
         from audit.linking import OwnershipIndex, TimingLinker
         res = _users()
         t = TimingLinker(requests, activity, OwnershipIndex(observations, res), res)
-        return {cid: sorted(l.resource_id for l in ls) for cid, ls in t.assigned.items()}, t.ambiguous
+        return {cid: sorted(link.resource_id for link in ls) for cid, ls in t.assigned.items()}, t.ambiguous
 
     def test_slot_rule_and_elimination(self):
         reqs = [_req("case_1", 1), _req("case_2", 2)]
@@ -182,7 +182,7 @@ class StateAndCatalogRules(unittest.TestCase):
                 "details": "Data catalog linked marketing_001 to p1@example.com and user_1."}]
         unknown = {"marketing_001": [_obs("marketing_001", idents={"email:someone@else.example"})]}
         links, rejected, flags = catalog_links(subject, "2026-09-15T00:00:00Z", act, OwnershipIndex([], res), unknown)
-        self.assertEqual(([l.resource_id for l in links], rejected, len(flags)), (["marketing_001"], [], 1))
+        self.assertEqual(([link.resource_id for link in links], rejected, len(flags)), (["marketing_001"], [], 1))
         known = {"marketing_001": [_obs("marketing_001", idents={"email:p2@example.com"})]}
         links, rejected, _ = catalog_links(subject, "2026-09-15T00:00:00Z", act, OwnershipIndex([], res), known)
         self.assertEqual((links, len(rejected)), ([], 1))
@@ -216,7 +216,7 @@ class RetentionConditionD23(unittest.TestCase):
         self.assertTrue(rs.condition.startswith("rule_13 not met"))
 
     def test_undeterminable_is_assumed_met_and_labelled(self):
-        rs, status, ops = self.resolve("audit_record_2", "SECURITY_AUDIT_LOG", None)
+        rs, _status, ops = self.resolve("audit_record_2", "SECURITY_AUDIT_LOG", None)
         self.assertEqual((rs.action, ops), ("RETAIN", ["VERIFY_RECORD_PRESENT"]))
         self.assertIn("undeterminable", rs.condition)
         self.assertIn("assumed met", rs.condition)

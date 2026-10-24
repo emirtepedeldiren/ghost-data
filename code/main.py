@@ -127,10 +127,10 @@ def run(requests_path: Path, output_path: Path, dataset_dir: Path, timing_links:
         for fl in flags:
             log(f"{cid}: catalog link kept, FLAG {fl}")
         via_by_rid = defaultdict(set)
-        for l in links:
-            via_by_rid[l.resource_id].add(f"{l.via}:{l.source_id}")
-            if l.via.startswith("identifier_post_audit"):
-                log(f"{cid}: post-audit link {l.resource_id} via {l.source_id} ({l.locator})")
+        for link in links:
+            via_by_rid[link.resource_id].add(f"{link.via}:{link.source_id}")
+            if link.via.startswith("identifier_post_audit"):
+                log(f"{cid}: post-audit link {link.resource_id} via {link.source_id} ({link.locator})")
 
         resolved = []
         for rid in sorted(via_by_rid):

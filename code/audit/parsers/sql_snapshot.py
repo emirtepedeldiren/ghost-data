@@ -16,7 +16,7 @@ import sqlite3
 from pathlib import Path
 
 from audit import vocab
-from audit.model import Coverage, Observation
+from audit.model import Coverage, Observation, ParseResult
 from audit.parsers.common import record_state, resource_ids_in, retention_end, unit_identifiers
 
 TABLE_SUFFIX = re.compile(r"_(primary|[a-z_]*replica[a-z_]*)$")
@@ -36,7 +36,7 @@ def _system_for_collection(collection: str) -> str | None:
     return None
 
 
-def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str]):
+def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str]) -> ParseResult:
     db = sqlite3.connect(":memory:")
     try:
         db.executescript(path.read_text(encoding="utf-8"))

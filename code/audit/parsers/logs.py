@@ -18,7 +18,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from audit import vocab
-from audit.model import Observation
+from audit.model import Observation, ParseResult
 from audit.parsers.common import record_state, resource_ids_in, retention_end, truthy, unit_identifiers
 
 KV = re.compile(r'(\w+)=("((?:[^"\\]|\\.)*)"|\S+)')
@@ -35,7 +35,7 @@ def kv(s: str) -> dict:
             for m in KV.finditer(s)}
 
 
-def parse_line(line: str):
+def parse_line(line: str) -> tuple[str, str | None, str | None, str | None, dict, str] | None:
     """-> (ts, service, trace_id, event, fields, dialect) or None."""
     m = TS.match(line.rstrip("\n"))
     if not m:
@@ -104,7 +104,7 @@ EVENT_RULES = {
 }
 
 
-def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str]):
+def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str]) -> ParseResult:
     groups: "OrderedDict[str, list[tuple]]" = OrderedDict()
     warnings: list[str] = []
     for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -120,7 +120,7 @@ def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names:
 
     observations: list[Observation] = []
     for key, lines in groups.items():
-        all_fields = [l[4] for l in lines]
+        all_fields = [ln[4] for ln in lines]
         idents = frozenset(unit_identifiers(all_fields, unique_names))
         rids_in_unit = set()
         for f in all_fields:
@@ -131,10 +131,10 @@ def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names:
         for rid in sorted(rids_in_unit):
             # The state-bearing line for this resource: last line naming it with a known event rule.
             state_line = None
-            for l in lines:
-                if l[4].get("resource_id") == rid and l[3] in EVENT_RULES:
-                    state_line = l
-            n, ts, service, event, fields, dialect = state_line or next(l for l in lines if l[4].get("resource_id") == rid)
+            for ln in lines:
+                if ln[4].get("resource_id") == rid and ln[3] in EVENT_RULES:
+                    state_line = ln
+            n, ts, service, event, fields, dialect = state_line or next(ln for ln in lines if ln[4].get("resource_id") == rid)
             named = fields.get("system") if fields.get("system") in vocab.CANONICAL_SYSTEMS else service
             system = vocab.system_for(rid, named)
             if system is None:

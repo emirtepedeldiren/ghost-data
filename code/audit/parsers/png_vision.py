@@ -7,15 +7,20 @@ Without an LLM client (e.g. --no-llm) the parser returns no observations and rep
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from audit import vocab
-from audit.model import Observation
+from audit.model import Observation, ParseResult
 from audit.vision import extract, record_identifiers, record_state, validate_record
+
+if TYPE_CHECKING:
+    from llm import LLMClient
 
 VISION_PENDING = "vision pending"
 
 
-def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str], client=None):
+def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str],
+          client: LLMClient | None = None) -> ParseResult:
     if client is None:
         return [], [], [f"{file_id} {path.name}: {VISION_PENDING} (no observations extracted)"]
     from llm import LLMError

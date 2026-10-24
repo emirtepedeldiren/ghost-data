@@ -2,7 +2,7 @@
 
 Status: **v1.0, frozen** (2026-10-24, Phase 4: `code/config/frozen_v1.toml`). Built: `code/contract.py`, `code/validate.py`, `code/evaluation/main.py`,
 the deterministic core `code/audit/` + `code/main.py`, the provider-agnostic client `code/llm/` (not yet wired in),
-`code/tools/list_models.py`, unit tests `code/tests/`. Decisions D1–D15 are the user's.
+`code/tools/dev/list_models.py`, unit tests `code/tests/`. Decisions D1–D15 are the user's.
 
 **Core principle (D11 revised):** an activity row may *propose* a resource-to-user link. **State and citations come only
 from observed evidence files.** When an observation contradicts an activity claim, the observation wins. D13 and D14
@@ -273,7 +273,7 @@ images=, json_schema=)`. Provider, per-task model IDs and list prices live in `c
 are cached on disk (key = provider + model + task + inputs), and every call is appended to `.work/llm_calls.jsonl` (dev log; the original API calls are in `code/llm_cache/calls.jsonl`) with
 token usage. `temperature` is sent and, if a model rejects it, retried once without it and memoized for that model.
 
-Models API listing (`.venv/bin/python code/tools/list_models.py`, 2026-10-24): 46 generateContent models. Image-input
+Models API listing (`.venv/bin/python code/tools/dev/list_models.py`, 2026-10-24): 46 generateContent models. Image-input
 support is not a field of the Gemini models API, so it is taken from the pricing page.
 
 | Use | Model in `config.toml` | List price in / out per 1M tokens | Status |

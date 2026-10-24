@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 from audit import vocab
-from audit.model import Coverage, Observation
+from audit.model import Coverage, Observation, ParseResult
 from audit.parsers.common import is_null, record_state, resource_ids_in, retention_end, unit_identifiers
 
 SERVICE_EXPORT_CATEGORY = {
@@ -43,7 +43,7 @@ def _obs(file_id, captured_at, line_time, rec, named_system, category, state, un
     )
 
 
-def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str]):
+def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str]) -> ParseResult:
     data = json.loads(path.read_text(encoding="utf-8"))
     observations: list[Observation] = []
     coverage: list[Coverage] = []

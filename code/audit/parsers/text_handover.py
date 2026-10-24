@@ -6,12 +6,12 @@ from pathlib import Path
 
 from audit import vocab
 from audit.identity import extract_identifiers
-from audit.model import Observation
+from audit.model import Observation, ParseResult
 
 LINE = re.compile(r"^\s*-\s*(\S+)\s*\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(.*?)\s*$")
 
 
-def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str]):
+def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names: frozenset[str]) -> ParseResult:
     observations, warnings = [], []
     for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         m = LINE.match(line)

@@ -12,18 +12,17 @@ Usage: python3 code/evaluation/citation_rules.py
 """
 from __future__ import annotations
 
-import csv
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from audit import vocab  # noqa: E402
-from audit.data import Dataset, read_csv  # noqa: E402
-from audit.identity import IdentityResolver  # noqa: E402
-from audit.parsers import build_index  # noqa: E402
-from contract import DATASET_DIR  # noqa: E402
-from evaluation.splits import tuning_ids  # noqa: E402
+from audit import vocab
+from audit.data import Dataset, read_csv
+from audit.identity import IdentityResolver
+from audit.parsers import build_index
+from contract import DATASET_DIR
+from evaluation.splits import tuning_ids
 
 
 def main() -> int:

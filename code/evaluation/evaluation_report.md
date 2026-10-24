@@ -426,6 +426,12 @@ The eval set has no labels, and D20 alone changed the steps of 160 eval cases, s
     - *Verdict.* No real field reaches the adoption threshold of ≥ 97% on ≥ 30 known instances. The one field that varies within twin
       sets (`requested_at`) predicts order at chance, so ordering is not a processing-order signal. Where it holds (e.g. one bundle), it is
       file-level generator order. D29 stands, and output.csv is unchanged.
+    - *Generalization.* The case-order artifact appears in one bundle only, and `requested_at` predicts at chance elsewhere, so even a
+      rule that exploited it would not generalize across the eval set.
+    - *Self-check during the test.* A first pass showed `audit_at` ordering at 94–100%. That was an artifact: owners in one file usually
+      share an `audit_at`, and a stable sort on tied values reproduces the list order, so the "prediction" was trivially right. It was
+      recomputed with ties as undecidable before any conclusion; the table above is the corrected result. The adoption threshold was
+      fixed before the test and not moved after it.
 - **Unreachable gold (1 tuning step, 1 holdout step):** `audit_record_6645` and `audit_record_5569` are in no participant file.
 - **Known extra step (D28):** `account_6523` in case_17. It belongs to the same person's earlier request (case_46); see §9.
 - **No observable records (D27).** A deletion subject with nothing observable `<= audit_at` gets COMPLETE with `[]`. This is logged as
@@ -443,7 +449,7 @@ The eval set has no labels, and D20 alone changed the steps of 160 eval cases, s
 |---|---|---|
 | D28 | Request scoping: a resource seen only before a person's earlier request belongs to that request (would drop `account_6523` from case_17) | It fixes 1 tuning step and changes 0 eval outputs. A rule whose only effect is matching a sample is fitting, not generalizing. |
 | D29 | Deterministic tie-break that assigns each interchangeable twin resource to one candidate request | It could raise sequence accuracy on about half of those cases, but an audit tool that attributes another person's data to a requester is wrong by design. Round 5 confirmed that no person-level field separates the twins; the only separator found is file order matching case_id order (§8), an artifact. |
-| D32 | Assign twin resources by record order, stated as a real field (`requested_at` / `reported_at` / `audit_at` processing order) | Tested without labels on 2,348 known-owner records across 588 lists: no field reaches ≥ 97% on ≥ 30 instances; `requested_at`, the only field that differs within twin sets, predicts at chance (18–45%) (§8). |
+| D32 | Assign twin resources by record order, stated as a real field (`requested_at` / `reported_at` / `audit_at` processing order) | Tested without labels on 2,348 known-owner records across 588 lists: no field reaches ≥ 97% on ≥ 30 instances; `requested_at`, the only field that differs within twin sets, predicts at chance (18–45%). The case-order artifact appears in one bundle only, so even a rule that exploited it would not generalize across the eval set. A tie artifact (94–100% for `audit_at`) was caught and corrected before the verdict (§8). |
 | D20 | Closed-world guard in L2 (account events of people without a request block follow-up links) | No measured effect; it would only add complexity. |
 | D13 (original) | Veto a catalog link whenever an observation shows a different identity | It left case_63 as an unprovable empty COMPLETE; revised to veto only identities that resolve to another known user. |
 | Round 1 | Scope-aware absence rule (a) and fallback rule (b) | Measured worse than (c) (§5.2). |

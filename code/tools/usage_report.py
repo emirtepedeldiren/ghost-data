@@ -21,8 +21,8 @@ N_REQUESTS = sum(1 for _ in (DATASET_DIR / "deletion_requests.csv").open(encodin
 
 
 def main() -> int:
-    calls = [json.loads(l) for l in (CODE / "llm_cache" / "calls.jsonl").open(encoding="utf-8")]
-    dev = [json.loads(l) for l in (CODE / "llm_cache" / "dev_calls.jsonl").open(encoding="utf-8")]
+    calls = [json.loads(line) for line in (CODE / "llm_cache" / "calls.jsonl").open(encoding="utf-8")]
+    dev = [json.loads(line) for line in (CODE / "llm_cache" / "dev_calls.jsonl").open(encoding="utf-8")]
     prices = tomllib.loads((CODE / "config.toml").read_text(encoding="utf-8"))["llm"]["prices"]
     frozen = tomllib.loads((CODE / "config" / "frozen_v1.toml").read_text(encoding="utf-8"))
 

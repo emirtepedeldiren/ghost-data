@@ -14,8 +14,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from contract import DATASET_DIR  # noqa: E402
-from evaluation.splits import tuning_ids  # noqa: E402
+from contract import DATASET_DIR
+from evaluation.splits import tuning_ids
 
 
 def where(rid: str, corpus: list[str], activity: str) -> str:

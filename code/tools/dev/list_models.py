@@ -16,7 +16,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 

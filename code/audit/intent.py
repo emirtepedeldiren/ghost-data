@@ -7,6 +7,7 @@ is labelled with its source so the run log shows that the fallback was used.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 TEMPORARY_FALLBACK_LABEL = "keyword_fallback(TEMPORARY: LLM intent pending approval)"
@@ -91,7 +92,7 @@ class IntentClassifier:
             "Keep each rationale under 15 words.")
         self.results: dict[str, Intent] = {}
 
-    def prepare(self, texts) -> list[str]:
+    def prepare(self, texts: Iterable[str]) -> list[str]:
         """Classify all texts in batches; returns log lines."""
         if self.client is None:
             return []
@@ -130,7 +131,7 @@ class IntentClassifier:
                                          f"{r.get('request_type')}: {str(r.get('rationale', ''))[:160]}")
         return log
 
-    def disagreements(self, rows) -> list[str]:
+    def disagreements(self, rows: list[dict]) -> list[str]:
         """D18: texts where the LLM and the keyword rules disagree, for manual review (rows: request dicts)."""
         by_text: dict[str, list[str]] = {}
         for r in rows:

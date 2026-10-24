@@ -2,25 +2,23 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 
 from audit import vocab
 from audit.identity import extract_identifiers, norm_name
 
 NAME_KEY = re.compile(r"(^|_)name$")
-IDENTIFYING_KEYS = ("email", "phone", "email_hash", "user_id", "customer_reference",
-                    "full_name", "name", "display_name", "requester_name", "requester_email",
-                    "requester_phone", "owner_email", "owner_phone", "customer_email")
 
 
-def is_null(v) -> bool:
+def is_null(v: object) -> bool:
     return v is None or (isinstance(v, str) and v.strip().lower() in ("", "null", "none"))
 
 
-def truthy(v) -> bool:
+def truthy(v: object) -> bool:
     return v is True or (isinstance(v, (int, float)) and v == 1) or (isinstance(v, str) and v.strip().lower() in ("1", "true", "yes"))
 
 
-def unit_identifiers(obj, unique_names: frozenset[str]) -> set[str]:
+def unit_identifiers(obj: object, unique_names: frozenset[str]) -> set[str]:
     """Every identifier inside a (nested) record: emails/phones/hashes/user ids from any string value,
     plus unique full names from *name fields."""
     found: set[str] = set()
@@ -43,7 +41,7 @@ def unit_identifiers(obj, unique_names: frozenset[str]) -> set[str]:
     return found
 
 
-def resource_ids_in(obj) -> set[str]:
+def resource_ids_in(obj: object) -> set[str]:
     out: set[str] = set()
 
     def walk(o):
@@ -60,11 +58,11 @@ def resource_ids_in(obj) -> set[str]:
     return out
 
 
-def has_direct_pii(rec: dict, keys) -> bool:
+def has_direct_pii(rec: dict, keys: Iterable[str]) -> bool:
     return any(not is_null(rec.get(k)) for k in keys)
 
 
-def text_has_pii(text) -> bool:
+def text_has_pii(text: object) -> bool:
     if is_null(text):
         return False
     return any(i.split(":", 1)[0] in ("email", "phone") for i in extract_identifiers(str(text)))
@@ -74,7 +72,7 @@ RETENTION_KEYS = ("retention_until", "retained_until")
 _DMY = re.compile(r"^\s*(\d{1,2}) ([A-Za-z]{3}) (\d{4})(?:\s+(\d{2})\s*[:\s]\s*(\d{2}))?")
 
 
-def parse_time(value) -> str | None:
+def parse_time(value: object) -> str | None:
     """ISO-8601 or '25 Aug 2027[ 04:03 UTC]' -> 'YYYY-MM-DDTHH:MM:SSZ'; None when not a date."""
     from datetime import datetime
     if is_null(value):

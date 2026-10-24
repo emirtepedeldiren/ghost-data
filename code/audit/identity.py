@@ -8,6 +8,7 @@ support_864 never matches support_8642 and user_1 never matches user_13.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 EMAIL_RE = re.compile(r"(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}(?![A-Za-z0-9\-])")
@@ -57,19 +58,6 @@ def extract_identifiers(text: str, names: frozenset[str] = frozenset()) -> set[s
             if raw in folded and re.search(r"(?<!\w)" + re.escape(raw) + r"(?!\w)", folded):
                 found.add(n)
     return found
-
-
-def direct_identifiers(values) -> set[str]:
-    """Identifiers present in a list of field values (None / 'null' / '' ignored)."""
-    out: set[str] = set()
-    for v in values:
-        if v is None:
-            continue
-        s = str(v)
-        if s.strip().lower() in ("", "null", "none", "-", "—"):
-            continue
-        out |= extract_identifiers(s)
-    return out
 
 
 @dataclass
@@ -142,7 +130,7 @@ class IdentityResolver:
         resolution = "current" if norm_email(cur["email"]) == key else "historical"
         return Subject(uid, request_email, frozenset(idents), cur, history, resolution), resolution
 
-    def owners_of(self, identifiers) -> set[str]:
+    def owners_of(self, identifiers: Iterable[str]) -> set[str]:
         """Users owning any of the given identifiers (names excluded: they are only a supporting signal)."""
         out: set[str] = set()
         for i in identifiers:

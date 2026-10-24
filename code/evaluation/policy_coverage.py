@@ -19,8 +19,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from contract import DATASET_DIR, REPO_ROOT, WORK_DIR  # noqa: E402
-from audit import vocab  # noqa: E402
+from contract import DATASET_DIR, REPO_ROOT, WORK_DIR
+from audit import vocab
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from audit.identity import IdentityResolver
 
 CODE = REPO_ROOT / "code"
 KV = re.compile(r'"?(\w+)"?\s*[=:]\s*("[^"]*"|[^\s,}]+)')
@@ -41,15 +46,15 @@ def raw_units(manifest: list[dict]) -> dict[str, list[dict]]:
             path = REPO_ROOT / f["file_path"]
         suffix = path.suffix.lower()
         if suffix == ".json":
-            def walk(o):
+            def walk(o, f=f):
                 if isinstance(o, dict):
                     if isinstance(o.get("resource_id"), str):
                         add(o["resource_id"], f, o, json.dumps(o, ensure_ascii=False))
                     for v in o.values():
-                        walk(v)
+                        walk(v, f)
                 elif isinstance(o, list):
                     for v in o:
-                        walk(v)
+                        walk(v, f)
             walk(json.loads(path.read_text(encoding="utf-8")))
         elif suffix == ".sql":
             db = sqlite3.connect(":memory:")
@@ -93,7 +98,7 @@ def parse_pdf_date(s: str) -> str:
 
 
 # ---------------------------------------------------------------- condition evaluation per rule
-def condition(category: str | None, res: dict, units: list[dict], audit_at: str, case: dict, resolver=None,
+def condition(category: str | None, res: dict, units: list[dict], audit_at: str, case: dict, resolver: IdentityResolver | None = None,
               any_time: bool = False) -> tuple[str, str]:
     """-> (branch, basis). branch in met / not met / undeterminable / n/a (Always rules, no rule).
     any_time=True also reads evidence captured after audit_at (a record's retention end date is a property of the record)."""

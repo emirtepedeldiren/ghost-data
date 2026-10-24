@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from audit.model import EvidenceIndex
 from audit.parsers import json_records, logs, pdf_text, png_vision, sql_snapshot, text_handover
@@ -16,7 +17,11 @@ PARSERS = {
 }
 
 
-def build_index(manifest: list[dict], dataset_dir: Path, unique_names: frozenset[str], llm_client=None) -> EvidenceIndex:
+if TYPE_CHECKING:
+    from llm import LLMClient
+
+def build_index(manifest: list[dict], dataset_dir: Path, unique_names: frozenset[str],
+                llm_client: LLMClient | None = None) -> EvidenceIndex:
     index = EvidenceIndex()
     for entry in manifest:
         path = dataset_dir / entry["file_path"]

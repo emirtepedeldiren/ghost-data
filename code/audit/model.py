@@ -39,6 +39,10 @@ class Coverage:
     store: str = ""                    # "" = primary store; replica snapshots name their table
 
 
+# What every evidence parser returns: (observations, coverage snapshots, warnings).
+ParseResult = tuple[list["Observation"], list["Coverage"], list[str]]
+
+
 @dataclass
 class EvidenceIndex:
     observations: list[Observation] = field(default_factory=list)

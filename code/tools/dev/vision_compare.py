@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-CODE = Path(__file__).resolve().parents[1]
+CODE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(CODE))
 from audit.identity import EMAIL_RE, USER_RE  # noqa: E402
 from audit.vision import extract, validate_record  # noqa: E402
@@ -56,7 +56,7 @@ def main(models: list[str]) -> int:
                 totals["identity_agrees"] += row["identity_agrees"]
             row["extracted"] = [{k: r[k] for k in ("resource_id", "user_id", "name", "email", "status")} for r in recs]
             rows.append(row)
-        usage = [json.loads(l) for l in (CODE.parent / ".work" / "llm_calls.jsonl").open() if json.loads(l)["model"] == model and json.loads(l)["task"] == "vision"]
+        usage = [json.loads(line) for line in (CODE.parent / ".work" / "llm_calls.jsonl").open() if json.loads(line)["model"] == model and json.loads(line)["task"] == "vision"]
         totals["input_tokens"] = sum(u["input_tokens"] for u in usage)
         totals["output_tokens"] = sum(u["output_tokens"] for u in usage)
         report[model] = {"totals": totals, "files": rows}
@@ -71,4 +71,11 @@ def main(models: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:] or ["gemini-3.6-flash", "gemini-3.5-flash-lite"]))
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("models", nargs="*", default=["gemini-3.6-flash", "gemini-3.5-flash-lite"], help="vision model IDs to compare")
+    ap.add_argument("--live", action="store_true", help="required: this tool makes live API calls (one per PNG per model)")
+    args = ap.parse_args()
+    if not args.live:
+        ap.error("refusing to run without --live (it makes live API calls); results of the D17 run are in evaluation_report.md §5.4")
+    sys.exit(main(args.models))

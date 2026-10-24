@@ -80,7 +80,7 @@ def config_with_new_prompt(text: str, cache_dir: str | None = None, cache_only: 
     rel = NEW_PROMPT.relative_to(ROOT).as_posix()
     text = VISION_LINE.sub(f'vision = {{ path = "{rel}", sha256 = "{sha(NEW_PROMPT)}" }}', text)
     if clean:   # drop the D31 pending comment lines
-        text = "\n".join(l for l in text.splitlines() if not l.startswith(("# D31:", "# code/tools/refresh_vision.py"))) + "\n"
+        text = "\n".join(line for line in text.splitlines() if not line.startswith(("# D31:", "# code/tools/refresh_vision.py"))) + "\n"
     if cache_dir is not None:
         text = re.sub(r'^cache_dir = ".*"$', f'cache_dir = "{cache_dir}"', text, flags=re.M)
     if cache_only is not None:
@@ -179,7 +179,7 @@ def main() -> int:
     for d in DOCS_WITH_CONFIG_HASH:
         if config_hash not in d.read_text(encoding="utf-8"):
             raise SystemExit(f"preflight: {d.name} does not quote the current config sha256 {config_hash[:12]}...")
-    calls = [json.loads(l) for l in (CACHE / "calls.jsonl").open(encoding="utf-8")]
+    calls = [json.loads(line) for line in (CACHE / "calls.jsonl").open(encoding="utf-8")]
     old_vision_calls = [c for c in calls if c["purpose"] == "production" and c["task"] == "vision"]
     pngs = sorted((ROOT / "dataset" / "evidence" / "images").glob("*.png"))
     if len(old_vision_calls) != len(pngs):
@@ -273,7 +273,7 @@ def main() -> int:
         shutil.copy2(f, CACHE / f.name)
     FROZEN.write_text(config_with_new_prompt(frozen_text, clean=True), encoding="utf-8")
     shutil.rmtree(legacy.parent) if legacy.parent.name == "legacy" else legacy.unlink()
-    dev = [json.loads(l) for l in (CACHE / "dev_calls.jsonl").open(encoding="utf-8")]
+    dev = [json.loads(line) for line in (CACHE / "dev_calls.jsonl").open(encoding="utf-8")]
     for c in old_vision_calls:
         dev.append({"purpose": "development", "provider": c["provider"], "model": c["model"], "task": c["task"],
                     "created_ts": c["created_ts"], "input_tokens": c["input_tokens"], "output_tokens": c["output_tokens"],
@@ -309,8 +309,8 @@ def main() -> int:
     }
     text = REPORT.read_text(encoding="utf-8")
     for m, body in blocks.items():
-        text = re.sub(rf"<!-- {m} -->.*?<!-- /{m} -->", lambda _: f"<!-- {m} -->{body}<!-- /{m} -->" if m != "D31:limitation"
-                      else f"<!-- {m} -->\n{body}\n<!-- /{m} -->", text, flags=re.S)
+        block = f"<!-- {m} -->\n{body}\n<!-- /{m} -->" if m == "D31:limitation" else f"<!-- {m} -->{body}<!-- /{m} -->"
+        text = re.sub(rf"<!-- {m} -->.*?<!-- /{m} -->", lambda _, block=block: block, text, flags=re.S)
     REPORT.write_text(text, encoding="utf-8")
     with (CODE / "CONTRACT.md").open("a", encoding="utf-8") as f:
         f.write(f"- **D31 done ({now_utc()}):** screenshots re-extracted with the neutral prompt ({made} call(s)); {n_diff} extracted "

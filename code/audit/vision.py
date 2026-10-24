@@ -7,9 +7,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from audit import vocab
 from audit.identity import EMAIL_RE, norm_email, norm_name, norm_phone, norm_user
+
+if TYPE_CHECKING:
+    from llm import LLMClient
 
 PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "vision_extract.md"
 USER_ID_RE = re.compile(r"^user_\d+$")
@@ -40,13 +44,13 @@ VISION_SCHEMA = {
 }
 
 
-def prompt_text(client) -> str:
+def prompt_text(client: LLMClient) -> str:
     """The vision system prompt: the file named by the client's config ([prompts] vision), else PROMPT_PATH."""
     path = client.prompt_path("vision", PROMPT_PATH) if hasattr(client, "prompt_path") else PROMPT_PATH
     return path.read_text(encoding="utf-8")
 
 
-def extract(client, path: Path) -> dict:
+def extract(client: LLMClient, path: Path) -> dict:
     res = client.generate("vision", "Transcribe the customer records in this screenshot.",
                           system=prompt_text(client), images=[path], json_schema=VISION_SCHEMA,
                           temperature=0.0)
