@@ -63,7 +63,8 @@ def explicit_links(subject: Subject, audit_at: str, observations: list[Observati
     return links
 
 
-def catalog_links(subject: Subject, audit_at: str, activity: list[dict], ownership: OwnershipIndex) -> tuple[list[Link], list[str]]:
+def catalog_links(subject: Subject, audit_at: str, activity: list[dict], ownership: OwnershipIndex,
+                  obs_by_rid: dict[str, list[Observation]] | None = None) -> tuple[list[Link], list[str]]:
     links, rejected = [], []
     for a in activity:
         if a["event_type"] != "LINK_RESOURCE_IDENTITY" or a["event_time"] > audit_at:
@@ -75,7 +76,14 @@ def catalog_links(subject: Subject, audit_at: str, activity: list[dict], ownersh
         if owners and subject.user_id not in owners:
             rejected.append(f"{a['activity_id']} {rid}: observations point to {sorted(owners)}, not {subject.user_id}")
             continue
-        links.append(Link(rid, "catalog", a["activity_id"], a["details"][:80]))
+        # D11/D13: an observation that shows direct identifiers, none of them the subject's, contradicts the claim.
+        for o in (obs_by_rid or {}).get(rid, []):
+            direct = {i for i in o.identifiers_present if i.split(":", 1)[0] in ("email", "phone", "name")}
+            if direct and not (direct & subject.identifiers):
+                rejected.append(f"{a['activity_id']} {rid}: {o.file_id} shows other identifiers {sorted(direct)[:2]}")
+                break
+        else:
+            links.append(Link(rid, "catalog", a["activity_id"], a["details"][:80]))
     return links, rejected
 
 

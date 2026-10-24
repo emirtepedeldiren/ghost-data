@@ -23,6 +23,7 @@ class Observation:
     named_system: str | None = None    # system as literally named by the evidence (for the decision log)
     locator: str = ""                  # path:line or table:row, for traceability
     unit_kind: str = ""                # parser family + event / collection
+    store: str = ""                    # "" = the system's primary store; else a named copy (e.g. a replica table)
 
 
 @dataclass(frozen=True)
@@ -32,8 +33,9 @@ class Coverage:
     captured_at: str
     system_id: str
     category: str                      # data category of the covered collection (USER_PROFILE, ...)
-    present: frozenset[str]            # resource ids present in this snapshot (any table / replica)
+    present: frozenset[str]            # resource ids present in this snapshot of this store
     locator: str = ""
+    store: str = ""                    # "" = primary store; replica snapshots name their table
 
 
 @dataclass

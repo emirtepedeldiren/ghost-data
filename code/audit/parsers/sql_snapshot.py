@@ -50,7 +50,7 @@ def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names:
         scope = {r["origin_system"] for r in db.execute("select origin_system from snapshot_scope")}
 
     observations: list[Observation] = []
-    present: dict[tuple[str, str], set[str]] = {}     # (system, category) -> resource ids in any table
+    present: dict[tuple[str, str, str], set[str]] = {}   # (system, category, store) -> resource ids
 
     for table in tables:
         if table == "snapshot_scope":
@@ -77,6 +77,7 @@ def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names:
             system = vocab.system_for(rid, named_system)
             if system is None:
                 continue
+            store = table if "replica" in table else ""
             flat = dict(rec)
             if isinstance(rec.get("document"), dict):
                 flat.update({k: v for k, v in rec["document"].items() if k not in flat})
@@ -88,16 +89,18 @@ def parse(file_id: str, path: Path, captured_at: str, origin: str, unique_names:
                 linked_resources=frozenset(resource_ids_in(rec) - {rid}),
                 named_system=named_system, locator=f"{path.name}:{table}[{n}]",
                 unit_kind=f"sql:{'replica' if 'replica' in table else 'primary' if table.endswith('_primary') else 'table'}:{collection}",
+                store=store,
             ))
             if category:
-                present.setdefault((system, category), set()).add(rid)
+                present.setdefault((system, category, store), set()).add(rid)
         if "record_json" not in cols:
             collection = base_collection(table)
             category = vocab.COLLECTION_CATEGORY.get(collection)
             system = _system_for_collection(collection)
             if category and system and (scope is None or system in scope):
-                present.setdefault((system, category), set())
+                # an empty typed table still covers its collection in its own store
+                present.setdefault((system, category, table if "replica" in table else ""), set())
 
-    coverage = [Coverage(file_id, captured_at, system, category, frozenset(ids), f"{path.name}:{category}")
-                for (system, category), ids in sorted(present.items())]
+    coverage = [Coverage(file_id, captured_at, system, category, frozenset(ids), f"{path.name}:{store or 'primary'}:{category}", store)
+                for (system, category, store), ids in sorted(present.items())]
     return observations, coverage, []

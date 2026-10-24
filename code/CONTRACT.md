@@ -1,6 +1,6 @@
 # CONTRACT.md — Ghost Data Still Exists deletion-audit agent
 
-Status: **DRAFT v0.3** (2026-10-24). Built: `code/contract.py`, `code/validate.py`, `code/evaluation/main.py`,
+Status: **v0.5** (2026-10-24, Round 1 closed). Built: `code/contract.py`, `code/validate.py`, `code/evaluation/main.py`,
 the deterministic core `code/audit/` + `code/main.py`, the provider-agnostic client `code/llm/` (not yet wired in),
 `code/tools/list_models.py`, unit tests `code/tests/`. Decisions D1–D15 are the user's.
 
@@ -165,8 +165,12 @@ corroboration (e.g. `CHECK_DATA_FLOW … remains enabled` agreeing with a connec
 | backup `restore_allowed=0` / `BLOCKED` | RESTORE_BLOCKED |
 | audit record present, `retention_until > T` | RETAINED |
 
-**Absence by snapshot coverage** (from sample case_01/02/04, all citing evidence_54): a snapshot that covers a
-system's table and lacks the resource's row proves ABSENT for that system at its `captured_at`.
+**Absence by omission (Round 1, rule (c), `--absence-rule fallback_delete`, default).** A snapshot that lists a collection and
+omits the resource proves ABSENT **only if** (1) there is no explicit observation of the resource `<= audit_at`, and (2) the
+resource's policy is DELETE. Omission from a partial snapshot can show deletion, never that a retained or redacted record is gone.
+Rejected alternatives, measured on the tuning split, are in evaluation_report.md §3.1. Explicit observations come first, so
+the evidence cited for absence is the latest explicit 404 / NOT_FOUND / rows=0 file, and a snapshot only when none exists
+(rule R4, 8/8 fit). Each copy is its own **store**: a replica table is not cleared by a primary-store snapshot.
 
 **Replica drift** (verified, must not be missed): 13 rows across 11 SQL files exist **only in a replica**
 (`*_replica*` table) and not in `*_primary`. Each maps to exactly one case. Examples: evidence_54 → account_005 (case_05),
@@ -220,10 +224,13 @@ inclusive boundary is load-bearing.
 
 - `deletion_status = INCOMPLETE` iff any FINDING exists, otherwise `COMPLETE`.
 - **Verification covers every relevant resource**, including ones already compliant (sample case_11 steps 9 and 11, and case_06).
+- **Fix 2 (Round 1).** In an INCOMPLETE case, a resource linked through an evidence file but with no state observation
+  `<= audit_at` gets the verification of its required final state (empty evidence). Activity-only links get no step (D11, D14).
 - ACCOUNT_TOMBSTONE: the stable `user_id` reference may remain; name, email, phone and email_hash must be null.
 - The DELETE vs ANONYMIZE choice for an analytics record that is "no longer attributable" follows §7.1.
 
 ### 7.3 Evidence citation (D4)
+- (R4, 8/8 on tuning gold) For absence, the latest explicit absence observation wins over any later snapshot omission.
 - Findings and COMPLETE verifications cite the **latest evidence file** (`captured_at <= T`) that observes the
   resource in the state being claimed (absence-by-coverage counts as observing). Activity ids are not cited for
   state (D11). Consistent with the gold: of 193 sample steps, all 75 non-empty citations are `evidence_*` file ids
@@ -264,10 +271,13 @@ token usage. `temperature` is sent and, if a model rejects it, retried once with
 Models API listing (`.venv/bin/python code/tools/list_models.py`, 2026-10-24): 46 generateContent models. Image-input
 support is not a field of the Gemini models API, so it is taken from the pricing page.
 
-| Use | Proposed model | List price in / out per 1M tokens | Status |
+| Use | Model in `config.toml` | List price in / out per 1M tokens | Status |
 |---|---|---|---|
-| intent (S2) | `gemini-3.8-flash` (newest Flash in the listing) | $0.75 / $3.75 (through 2026-12-31; $1.50 / $7.50 from 2027-01-01) | **awaiting approval** |
-| screenshots (S4) | `gemini-3.8-flash` (newest priced image-input model) | same | **awaiting approval** |
+| intent (S2) | `gemini-2.5-flash`, **batched** (80 texts per call, 5 calls for 398 unique texts) | $0.30 / $2.50 | **D18 approved** |
+| screenshots (S4) | `gemini-3.5-flash-lite` (won the D17 comparison) | $0.30 / $2.50 | chosen by data (evaluation_report.md §4.2) |
+
+D17 approved `gemini-3.8-flash` for intent; it timed out on every request on 2026-10-24. `gemini-3.6-flash` then hit the
+free-tier quota (20 requests/day/model). On the free tier a run is feasible only with batching and the cache.
 
 Price source: https://ai.google.dev/gemini-api/docs/pricing (page "last updated 2026-10-22"). `usage_report.md` reports cost at
 these list prices even on the free tier. Until approval: intent uses the keyword fallback (labelled TEMPORARY in code and
@@ -328,7 +338,7 @@ These cases reuse real dataset identities and evidence. Only the request row is 
 | Item | Decision | Status |
 |---|---|---|
 | N1 post-T linking | D12-A: ownership only, logged, flag to disable | resolved |
-| N2 model IDs | D10 revised: Gemini; newest Flash for intent, newest vision-capable for screenshots (§9) | proposed `gemini-3.8-flash` for both, **awaiting approval** |
+| N2 model IDs | D10 revised, D17: Gemini; see §9 | intent: substitute pending decision; vision: gemini-3.5-flash-lite by comparison |
 | N3 marketing_001 | D13-B: unlinked and flagged; identity search found no match | resolved |
 | N4 object_19 | D14-A: excluded (activity-only link, D11) | resolved |
 
@@ -365,3 +375,20 @@ Missing gold steps by root cause, timing off (50 missing of 193; 49 by identity 
 
 Extra steps: 2 with timing off (one stale March lookup `account_6523`, one catalog proposal `tombstone_17`); 5 with timing on (+3 wrong
 timing assignments). No parser gaps, identity misses or ordering errors among the top-10 diffs. **No fix has been applied yet** (user instruction).
+
+## 16. Round 1 decisions (2026-10-24)
+- **D16 holdout:** case_04, 08, 12, 16, 20, 24, 28, 32 (every 4th, `code/evaluation/splits.py`). Aggregates only; contamination
+  before the freeze is disclosed in evaluation_report.md §1.1.
+- **D17:** LLM intent wired in (batched, cached); vision comparison done; `gemini-3.5-flash-lite` chosen.
+- **State:** absence rule (c) plus fix 2 restricted to evidence-linked resources. 12 → 0 state-caused misses on the tuning split.
+- **Citation:** R4 (explicit absence observation first) fits 8/8 tuning absence citations.
+- **Irreducible:** `audit_record_5569` and `audit_record_6645` occur in no participant file.
+
+## 17. Decisions D18, D19 and standing rule (2026-10-24)
+- **D18 (intent model, replaces D17 for intent):** batched `gemini-2.5-flash`. Billing is not worth it for a cached step.
+  Condition: each batch response must return exactly the input ids (no missing, extra or duplicate ids), or the whole batch
+  falls back to the keyword rules. Every text where the LLM and the keyword rules disagree is listed in the run log
+  (`intent disagreement ...`) for manual review.
+- **D19:** absence rule (c) is the default (`--absence-rule fallback_delete`). Omission can prove a record was deleted, never
+  that a retained record is gone. Fix 2 is restricted to evidence-linked resources, consistent with D14.
+- **Standing rule:** at the end of every round, commit and push to the working branch without asking.

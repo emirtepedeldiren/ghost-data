@@ -34,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from contract import DATASET_DIR, STEP_FIELDS, STEP_KEYS, case_sort_key  # noqa: E402
+from evaluation.splits import holdout_ids  # noqa: E402
 
 FIELD_METRICS = ("system_id", "resource_id", "operation", "state", "evidence_id", "phase")
 IDENTITY = ("phase", "operation", "system_id", "resource_id")
@@ -242,6 +243,8 @@ def main() -> int:
     ap.add_argument("--gold", type=Path, default=DATASET_DIR / "sample_output.csv")
     ap.add_argument("--json-out", type=Path, help="write the full metrics and diffs as JSON")
     ap.add_argument("--max-diff-cases", type=int, default=50)
+    ap.add_argument("--split", choices=("all", "tuning", "holdout"), default="all",
+                    help="D16: 'holdout' prints aggregates only; per-case diffs of holdout cases are never shown")
     args = ap.parse_args()
 
     for path in (args.pred, args.gold):
@@ -252,7 +255,15 @@ def main() -> int:
     pred, pw = load_cases(args.pred)
     for w in gw + pw:
         print(f"WARNING: {w}")
+    hold = set(holdout_ids(sorted(gold, key=case_sort_key))) if args.gold.name == "sample_output.csv" else set()
+    if args.split == "tuning":
+        gold = {c: g for c, g in gold.items() if c not in hold}
+    elif args.split == "holdout":
+        gold = {c: g for c, g in gold.items() if c in hold}
     report = score(gold, pred)
+    # D16: holdout cases never expose per-case diffs, in any split.
+    report["case_diffs"] = {c: d for c, d in report["case_diffs"].items() if c not in hold}
+    print(f"split={args.split} ({len(gold)} gold cases; holdout diffs hidden: {len(hold & set(gold))})")
     print_report(report, args.max_diff_cases)
     if args.json_out:
         args.json_out.write_text(json.dumps(report, indent=2, ensure_ascii=False, default=list), encoding="utf-8")

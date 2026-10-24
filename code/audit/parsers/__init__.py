@@ -16,7 +16,7 @@ PARSERS = {
 }
 
 
-def build_index(manifest: list[dict], dataset_dir: Path, unique_names: frozenset[str]) -> EvidenceIndex:
+def build_index(manifest: list[dict], dataset_dir: Path, unique_names: frozenset[str], llm_client=None) -> EvidenceIndex:
     index = EvidenceIndex()
     for entry in manifest:
         path = dataset_dir / entry["file_path"]
@@ -27,7 +27,10 @@ def build_index(manifest: list[dict], dataset_dir: Path, unique_names: frozenset
         if not path.exists():
             index.warnings.append(f"{entry['file_id']} {path.name}: file missing")
             continue
-        obs, cov, warns = parser(entry["file_id"], path, entry["captured_at"], entry["origin"], unique_names)
+        if parser is png_vision.parse:
+            obs, cov, warns = parser(entry["file_id"], path, entry["captured_at"], entry["origin"], unique_names, llm_client)
+        else:
+            obs, cov, warns = parser(entry["file_id"], path, entry["captured_at"], entry["origin"], unique_names)
         index.observations.extend(obs)
         index.coverage.extend(cov)
         for w in warns:

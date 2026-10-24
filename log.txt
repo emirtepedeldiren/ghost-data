@@ -189,3 +189,80 @@ repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-or
 worktree=main
 parent_agent=none
 
+## [2026-10-24T14:07:51Z] Round 1: holdout, LLM intent + vision, state rule (c), citation rule R4
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: Baseline accepted. P=97.95% / R=74.09% — we rarely invent steps, we miss them. 40 of the missing steps come from two root causes: linking (23) and state (17). Round 1 targets state first because it is the more principled fix; linking is round 2.
+
+DECISION D16 (holdout): Before any tuning, freeze a holdout of 8 sample cases (every 4th case_id, chosen mechanically). From now on we never read per-case diffs for them — only aggregate scores. All tuning happens on the other 24. evaluation_report.md reports both.
+RATIONALE: 32 cases is small; tuning on all of them would make our accuracy numbers unprovable.
+
+DECISION D17 (models): Approve gemini-3.8-flash for intent. For screenshots, run gemini-3.8-flash plus one other priced vision model on all 11 PNGs, and score both against the LINK_RESOURCE_IDENTITY activities (activity_4000–4011) as a cross-check. The better one wins; the comparison goes into evaluation_report.md. Wire in the intent classifier now (cached, temperature 0 if supported). Expected: case_26 becomes correct.
+
+ROUND 1 — state reconstruction
+EVIDENCE: case_05 — an empty inventory snapshot from 09-05 hid the replica-drift row in evidence_54, so the case went COMPLETE instead of INCOMPLETE. The same pattern explains 17 missing steps across cases 05, 17, 21, 24, 25, 27, 28.
+MY HYPOTHESIS: absence-by-omission is only valid inside a snapshot's declared scope. A snapshot of the primary store cannot prove a replica row absent.
+REQUEST: Check snapshot_scope (and equivalent scope fields) for the 7 cases. Then compare two rules on the 24 tuning cases:
+  (a) scope-aware: omission proves ABSENT only for stores/collections the snapshot declares it covers
+  (b) your fallback: omission proves ABSENT only when there is no explicit observation by audit_at
+If (a) explains all 17, we use (a). If not, report which cases it misses and why.
+Also apply your fix 2: in INCOMPLETE cases, add the required-final-state verification for linked resources with no observation (empty evidence_id).
+
+CITATION QUESTION (case_04: gold cites evidence_54, not the later evidence_90):
+REQUEST: Do not guess. For every absence citation in the 24 tuning gold cases, test which rule fits: latest snapshot ≤ audit_at / earliest snapshot after the deletion event / same file as the case's other findings. Report the fit rate of each.
+
+NOT FIXING (document in evaluation_report.md): audit_record_5569 and audit_record_6645 appear in no participant file — irreducible misses, we do not chase them.
+
+ACCEPTANCE CRITERIA (24 tuning cases):
+  - state-root-cause missing steps: 17 → 0, or each remaining one explained
+  - precision stays ≥ 97%
+  - case_05 → INCOMPLETE
+  - holdout aggregate reported, no per-case output
+  - validator passes on all 518
+End with a ROUND 1 SUMMARY (fixed / metric before → after / still open / next focus).
+
+Agent Response Summary:
+Froze the mechanical holdout (case_04,08,12,16,20,24,28,32); the scorer and rootcause tool hide holdout diffs, and earlier contamination is disclosed. gemini-3.8-flash timed out on every request and gemini-3.6-flash hit the free-tier 20 req/day/model quota, so intent now runs batched (398 texts, 5 calls) on gemini-2.5-flash as a flagged substitute; case_26 is fixed and exactly 10 non-deletion requests are found. Vision comparison: gemini-3.5-flash-lite (9/9 printed ids, /bin/zsh.026) beat gemini-2.5-flash (8/9, /bin/zsh.095). Rule (a) fixed only case_05 (bundles declare only data_store+collection and are partial within it); rule (b) left 4 misses; rule (c) (fallback, omission only for DELETE resources) plus fix 2 restricted to evidence-linked resources gives 12→0 state misses on tuning. Citation rule R4 (explicit absence first) fits 8/8. Round 1 tuning: status 100%, P 99.24, R 87.25, F1 92.86, sequence 33.33; holdout P 100, R 81.82; validator passes on 518.
+
+Actions:
+* Created code/evaluation/{splits,rootcause,citation_rules}.py and code/evaluation/evaluation_report.md
+* Added --split to the scorer; added stores and absence rules to parsers/reconstruct; added fix 2; added catalog contradiction rule
+* Created code/prompts/{intent,vision_extract}.md, code/audit/vision.py, code/tools/{vision_compare,warm_intent_cache}.py; wired PNG parser
+* LLM client: timeout wrapping, retry/backoff, thread-safe logging; config.toml model substitutes and prices
+* Gemini API: probes, 16+5 intent calls, 22 vision calls (about /bin/zsh.22 at list prices); no key printed
+* Ran samples (several variants) and 518 eval; validator PASS; unit tests OK; CONTRACT.md v0.4
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-10-24T14:10:19Z] D18/D19 recorded; batch id check + disagreement log; commit Round 1
+
+User Prompt (verbatim, secrets redacted):
+DECISION D18 (intent model, replaces D17 for intent): batched gemini-2.5-flash.
+RATIONALE: gemini-3.8-flash timed out on every call and 3.6-flash hit the free-tier daily cap; 2.5-flash already gives exactly the 10 expected non-deletions. Billing is not worth it for a cached step.
+CONDITION: batching adds a position-mixup risk. Add a check: each batch response must return exactly the input ids, and any text where the LLM and the keyword fallback disagree is listed in the run log for manual review. Show me that list.
+
+DECISION D19: Rule (c) confirmed as default. Rationale recorded: omission can prove a record was deleted, never that a retained record is gone. Fix 2 restricted to evidence-linked resources — confirmed, consistent with D14.
+
+STANDING RULE: at the end of every round, commit and push to the branch without asking. Update CONTRACT.md with D18 and D19 now, then commit and push Round 1. Keep this turn short — no new work.
+
+Agent Response Summary:
+Added the D18 batch check: a response must return exactly the input ids or the whole batch falls back to keyword rules (all 5 batches passed). LLM-vs-keyword disagreements are now logged for review; there is exactly one, case_26, where the LLM is correct. Recorded D18, D19 and the standing commit rule in CONTRACT.md (v0.5); metrics unchanged and tests pass. Committed and pushed Round 1 to phase0-contract-and-eval.
+
+Actions:
+* Edited code/audit/intent.py (id check, disagreements()), code/main.py (logs both), code/CONTRACT.md (section 17)
+* Ran samples; scorer and unit tests; git commit and push
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+

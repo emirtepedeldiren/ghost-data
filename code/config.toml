@@ -8,12 +8,30 @@ cache_dir = "code/cache/llm"     # cached responses, keyed by provider+model+tas
 usage_log = "code/cache/llm_calls.jsonl"
 
 [llm.models]
-# PROPOSED 2026-10-24 from the Gemini models API listing; awaiting user approval.
-intent = "gemini-3.8-flash"
-vision = "gemini-3.8-flash"
+# D17 approved gemini-3.8-flash for intent, but on 2026-10-24 it timed out on every request (also via the
+# gemini-flash-latest alias), and gemini-3.6-flash hit the free-tier quota (20 requests/day/model) after 16 calls.
+# SUBSTITUTE pending user decision (enable billing, or accept): gemini-2.5-flash, batched (80 texts per call).
+intent = "gemini-2.5-flash"
+# Set after the D17 screenshot comparison (gemini-3.5-flash-lite vs gemini-2.5-flash).
+vision = "gemini-3.5-flash-lite"
 
 # List prices in USD per 1M tokens, used for usage_report.md cost estimates even on the free tier.
 [llm.prices."gemini-3.8-flash"]
 input = 0.75
 output = 3.75
 source = "https://ai.google.dev/gemini-api/docs/pricing (page updated 2026-10-22; price valid through 2026-12-31, $1.50/$7.50 from 2027-01-01)"
+
+[llm.prices."gemini-3.6-flash"]
+input = 0.75
+output = 3.75
+source = "https://ai.google.dev/gemini-api/docs/pricing (page updated 2026-10-22; price valid through 2026-12-31, $1.50/$7.50 from 2027-01-01)"
+
+[llm.prices."gemini-3.5-flash-lite"]
+input = 0.30
+output = 2.50
+source = "https://ai.google.dev/gemini-api/docs/pricing (page updated 2026-10-22)"
+
+[llm.prices."gemini-2.5-flash"]
+input = 0.30
+output = 2.50
+source = "https://ai.google.dev/gemini-api/docs/pricing (page updated 2026-10-22; text/image/video input)"

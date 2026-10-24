@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import threading
 import json
 import os
 import time
@@ -68,6 +69,8 @@ class GeminiProvider(_Provider):
 
     def __init__(self):
         self.key = os.environ.get("GEMINI_API_KEY")
+        self.timeout = float(os.environ.get("LLM_TIMEOUT_S", "60"))
+        self.attempts = int(os.environ.get("LLM_ATTEMPTS", "3"))
         if not self.key:
             raise LLMError("GEMINI_API_KEY is not set")
 
@@ -82,16 +85,26 @@ class GeminiProvider(_Provider):
         if json_schema:
             body["generationConfig"]["responseMimeType"] = "application/json"
             body["generationConfig"]["responseSchema"] = json_schema
-        req = urllib.request.Request(self.URL.format(model=model), data=json.dumps(body).encode(),
-                                     headers={"x-goog-api-key": self.key, "Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                data = json.load(resp)
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode(errors="replace")[:300]
-            raise LLMError(f"gemini HTTP {e.code}: {detail}") from None
-        except urllib.error.URLError as e:
-            raise LLMError(f"gemini unreachable: {e.reason}") from None
+        payload = json.dumps(body).encode()
+        data, last = None, ""
+        for attempt in range(self.attempts):
+            req = urllib.request.Request(self.URL.format(model=model), data=payload,
+                                         headers={"x-goog-api-key": self.key, "Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    data = json.load(resp)
+                break
+            except urllib.error.HTTPError as e:
+                last = f"gemini HTTP {e.code}: {e.read().decode(errors='replace')[:300]}"
+                if e.code not in (429, 500, 502, 503, 504):
+                    raise LLMError(last) from None
+            except urllib.error.URLError as e:
+                last = f"gemini unreachable: {e.reason}"
+            except (TimeoutError, OSError) as e:   # socket read timeouts are not URLError
+                last = f"gemini timeout/network error: {type(e).__name__}"
+            time.sleep(min(30.0, 2.0 * 2 ** attempt))
+        if data is None:
+            raise LLMError(f"{last} (after {self.attempts} attempts)")
         cands = data.get("candidates") or []
         text = "".join(p.get("text", "") for c in cands[:1] for p in c.get("content", {}).get("parts", []))
         usage = data.get("usageMetadata", {})
@@ -147,11 +160,13 @@ class LLMClient:
         self.usage_log = REPO_ROOT / cfg.get("usage_log", "code/cache/llm_calls.jsonl")
         self._provider: _Provider | None = None
         self._no_sampling: set[str] = set()   # models that rejected temperature (memoized per run)
+        self._lock = threading.Lock()
 
     @property
     def provider(self) -> _Provider:
-        if self._provider is None:
-            self._provider = PROVIDERS[self.provider_name]()
+        with self._lock:
+            if self._provider is None:
+                self._provider = PROVIDERS[self.provider_name]()
         return self._provider
 
     def _cache_key(self, model, task, system, prompt, images, json_schema) -> str:
@@ -163,9 +178,10 @@ class LLMClient:
         return h.hexdigest()
 
     def _log(self, entry: dict) -> None:
-        self.usage_log.parent.mkdir(parents=True, exist_ok=True)
-        with self.usage_log.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, sort_keys=True) + "\n")
+        with self._lock:
+            self.usage_log.parent.mkdir(parents=True, exist_ok=True)
+            with self.usage_log.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, sort_keys=True) + "\n")
 
     def generate(self, task: str, prompt: str, *, system: str = "", images: list[Path] | None = None,
                  json_schema: dict | None = None, temperature: float | None = 0.0) -> LLMResult:
