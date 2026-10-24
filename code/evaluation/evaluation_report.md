@@ -7,13 +7,15 @@ Final version (frozen run `frozen_v1`, 2026-10-24). All numbers come from the fr
 
 **Approach in 5 lines.**
 1. **Deterministic core.** Identity resolution (current + historical identifiers), parsers for six evidence formats into one
-   observation schema, linking, state at `audit_at`, policy, and contract ordering. Every step traces to an evidence line.
+   observation schema, linking, state at `audit_at`, policy, and contract ordering. Every finding and every COMPLETE verification
+   cites an evidence file captured `<= audit_at`; the decision log records each linked resource's link source and state evidence.
 2. **LLM only where text or pixels must be read:** request intent (multilingual, negations, partial scopes; `gemini-2.5-flash`, 5 batched
    calls) and 11 application screenshots (`gemini-3.5-flash-lite`). Everything else needs exact, auditable rules, so it is code.
 3. **Claims are not evidence.** Workflow statuses and activity rows may *propose* a link but never set a state or a citation. State is
    the latest observation captured `<= audit_at`; a later file may show who owns a record, never its state.
 4. **Identifier-free records** are linked through the deletion worker's schedule (rule L2), and only when exactly one request fits.
-   Another person's data is never attributed to a requester.
+   A proposed link is vetoed when the record shows an identity that resolves to a *different known user*; an identity that resolves to
+   no one does not veto. The one such case, case_63 (`marketing_001`, D13), is flagged in the run log and listed in §8.
 5. **Frozen and reproducible.** The config is pinned by hash and the run is cache-only (0 live API calls). A clean clone reproduces
    `output.csv` byte for byte without an API key.
 
@@ -21,9 +23,9 @@ Final version (frozen run `frozen_v1`, 2026-10-24). All numbers come from the fr
 
 | Split | Cases | Status accuracy | Row accuracy | Step P / R / F1 | Field accuracy | Order on matched steps | Sequence accuracy |
 |---|---|---|---|---|---|---|---|
-| Tuning | 24 | **100.00%** | **62.50%** | **99.30 / 94.63 / 96.91%** | 94.00% (every field, §2.1) | **100%** (530/530 pairs) | **62.50%** |
-| Holdout ¹ | 8 | **100.00%** | **62.50%** | **100.00 / 90.91 / 95.24%** | 90.91% (every field, §2.2) | **100%** (95/95 pairs) | **62.50%** |
-| All samples | 32 | 100.00% | 62.50% | 99.45 / 93.78 / 96.53% | 93.30% | 100% (625/625 pairs) | 62.50% |
+| Tuning | 24 | **100.00%** (24/24) | **62.50%** (15/24) | **99.30%** (141/142) / **94.63%** (141/149) / **96.91%** | 94.00% (141/150, every field, §2.1) | **100%** (530/530 pairs) | **62.50%** (15/24) |
+| Holdout ¹ | 8 | **100.00%** (8/8) | **62.50%** (5/8) | **100.00%** (40/40) / **90.91%** (40/44) / **95.24%** | 90.91% (40/44, every field, §2.2) | **100%** (95/95 pairs) | **62.50%** (5/8) |
+| All samples | 32 | 100.00% (32/32) | 62.50% (20/32) | 99.45% (181/182) / 93.78% (181/193) / 96.53% | 93.30% (181/194) | 100% (625/625 pairs) | 62.50% (20/32) |
 
 ¹ Small n: each holdout case is 12.5 points of row/sequence accuracy. The holdout is evidence of generalization, not a precise estimate.
 
@@ -32,6 +34,7 @@ Final version (frozen run `frozen_v1`, 2026-10-24). All numbers come from the fr
 - **Order on matched steps** = the steps we got right appear in the same relative order as in gold (pairwise concordance; every case with
   at least 2 matched steps is in gold order). At 100%, every remaining miss is a missing or extra step, not an ordering error.
 - **Field accuracy** is identical across all six fields for the same reason: no aligned step has a wrong state, operation or citation.
+  Its denominator (150 on tuning) is one larger than recall's (149): it counts aligned positions, so the 1 extra predicted step is included.
 - **What is left on tuning:** 8 missing gold steps (7 interchangeable "twin" resources deliberately left unlinked, D29; 1 id that is in no
   participant file) and 1 extra step (`account_6523`, D28).
 - **Generalization:** the holdout improved at the same rate as tuning across the rounds (sequence 12.5 → 62.5%, §3).
@@ -59,16 +62,22 @@ response cache with 0 live calls (`usage_report.md`).
 | Failures found and improvements made | README, problem statement | §3 (before → after per round), §4 (failures and fixes), §5 (A/B), §7 (manual audit) |
 | Usage: providers, models, calls, input/output tokens, total and average tokens per request, total and per-request cost, per-model and overall | README, problem statement | `usage_report.md` |
 | Reports in `code/evaluation/`, metrics written in Markdown | README | this file and `usage_report.md` |
+| No hardcoded test labels or file-specific answers | task brief | `code/tests/test_core.py` `NoHardcodedAnswers`: the executable code of `code/audit`, `code/llm`, `main.py`, `contract.py` and `validate.py` contains no literal case/evidence/resource/user/activity/audit id or email (comments and docstrings excluded). **Known exception:** the screenshot prompt lists the ids printed in the screenshots as examples (§8) |
+| Gold answers never read by the pipeline | task brief | same test: a full sample run, with every file open recorded, never opens `sample_output.csv` (only the scorer reads it) |
+| Reads the CSV files and local media files | README, problem statement | same test: the run opens all 7 dataset CSVs and every file in `evidence_files.csv`, including the 11 PNGs and 4 PDFs |
+| Prompts in source / Markdown files | README | `code/prompts/intent.md`, `code/prompts/vision_extract.md` (hash-pinned in `code/config/frozen_v1.toml`) |
 
 ## 1. How we measure
 
 - **Gold:** `dataset/sample_output.csv` (32 cases). The participant data contains no other answers.
 - **Scorer:** `python3 code/evaluation/main.py --pred <csv> --split {all,tuning,holdout}`.
-  - **Case-level status accuracy:** share of cases with the exact `deletion_status`, broken down by gold status.
-  - **Step-level:** a step is `(phase, system_id, resource_id, operation, state, evidence_id)`. A per-case multiset match gives
-    precision, recall, F1 and accuracy = matches / Σ max(|gold|, |pred|).
+  - **Case-level status accuracy:** cases with the exact `deletion_status` / scored cases (24/24 on tuning), also by gold status.
+  - **Step-level:** a step is `(phase, system_id, resource_id, operation, state, evidence_id)`; matches are a per-case multiset
+    intersection. Precision = matches / predicted steps (141/142 on tuning); recall = matches / gold steps (141/149); F1 = their
+    harmonic mean; step accuracy = matches / Σ per case max(|gold|, |pred|) (141/150).
   - **Field-level:** gold and predicted steps are aligned with difflib on `(phase, operation, system_id, resource_id)`. Accuracy per field
-    = matching pairs / (pairs + unpaired gold + unpaired pred). In the final run every field scores the same as the step accuracy,
+    = aligned pairs whose field matches / (aligned pairs + unpaired gold + unpaired pred) = 141 / (141 + 8 + 1) = 141/150 on tuning.
+    The denominator counts every aligned position, so an extra predicted step lowers it but not recall. In the final run every field scores the same as the step accuracy,
     because every remaining error is a whole missing or extra step. No aligned step has a wrong state or citation.
   - **Sequence accuracy:** share of cases whose full `steps_json` array (all keys, order and `step_no` included) equals gold.
   - **Row accuracy:** share of cases whose whole output row equals gold: `deletion_status` and the full `steps_json`.
@@ -130,10 +139,10 @@ Reproduce with `python3 code/main.py --requests dataset/sample_deletion_requests
 | NOT_STARTED | 26 | 76 | 10 | 112 |
 | **Total** | **152** | **356** | **10** | **518** |
 
-- **65% of "COMPLETE" claims are wrong.** Of the 254 requests the workflow reported COMPLETE, 165 still leave personal data or a
-  recreation path at `audit_at`.
-- **Some failure claims are wrong too.** 37 PARTIALLY_COMPLETE and 26 NOT_STARTED requests are in fact complete: the evidence shows
-  every relevant record treated as policy requires.
+- **The audit contradicts 65% of "COMPLETE" claims.** For 165 of the 254 requests the workflow reported COMPLETE, the evidence shows
+  personal data or a recreation path still present at `audit_at`.
+- **Some failure claims are contradicted too.** For 37 PARTIALLY_COMPLETE and 26 NOT_STARTED requests the audit finds the deletion
+  complete: every linked record is observed in the state its policy requires.
 - **NOT_APPLICABLE only where the text asks for something else.** All 10 are request texts asking for access, export, correction or
   marketing opt-out, or explicitly saying not to delete. The workflow had reported every one of them NOT_STARTED.
 
@@ -223,7 +232,8 @@ The full audit is in `policy_coverage.md`, with 2 audited examples per category 
 participant data is in 2027–2034 (audit records 2031–2034, one PDF 2027-08-25, legal holds 2033-12-31), after every `audit_at`.
 
 **Fix (D23, for correctness, not score).**
-- The stated end date (`retention_until`, `retained_until`, PDF "retain until") is parsed in every parser.
+- The stated end date (`retention_until`, `retained_until`, PDF "retain until") is parsed by the JSON, SQL, log and PDF parsers
+  (the handover text and the screenshots state no end dates for these categories).
 - rule_12/13 now have explicit met / not met / undeterminable branches: not met → DELETE; undeterminable is assumed met and logged
   per resource.
 - Eval branch counts: rule_12 99 met / 323 undeterminable; rule_13 5 met / 3 undeterminable.
@@ -360,6 +370,16 @@ The eval set has no labels, and D20 alone changed the steps of 160 eval cases, s
 | 3 | Fix-2 verifications for records linked only through a post-audit file (audit_record_6504 in case_114, audit_record_1372 in case_489) | The D12 precedent, sample case_09: `audit_record_4902` is linked only through evidence_06 (captured 09-18, after audit_at 09-16) and has no state observation. Gold step 4 is `VERIFY_RECORD_PRESENT security_service/audit_record_4902 PRESENT ""`, and `account_3960` is `VERIFY_RECORD_ABSENT … ""`. Our case_09 `steps_json` is **identical** to gold. | Behaviour matches the gold precedent exactly. Not changed. |
 
 ## 8. Known limitations
+- **Screenshot prompt contains the screenshots' own ids (found in the Round 5 compliance scan).** `code/prompts/vision_extract.md` gives
+  example ids (`account_5762`, `search_428`, `data_flow_1121`, `backup_9287`, `export_1260`, `support_1034`, `analytics_7438`,
+  `audit_record_003`, `tombstone_17`, `marketing_001`, `user_11`) that are printed in the 11 dataset screenshots. The check found no
+  sign that this injected anything: `tombstone_17` is listed but not printed in its screenshot, and the model did not extract it.
+  Every extracted example id sits in a table or panel next to other ids from the same image. It is still file-specific text in a prompt.
+  Fixing it changes the prompt, and with it every screenshot cache key: 11 live calls, pending approval.
+- **Catalog link kept against an unresolvable identity (D13 revised): case_63.** `activity_4008` links `marketing_001` to the requester,
+  while its screenshot (evidence_60) shows *Soo-jin Park, sj.park@naver.com, +82 10-5837-9451*, an identity that matches no known user.
+  Because it resolves to no one, it does not veto the link; the case reports `marketing_001` as a remaining record, flagged
+  `identity-mismatch` in the run log. It is the only such case in the eval set.
 - **Absence by omission from replica tables only (Round 4, finding 1; kept by D30).** 64 eval account ABSENT states (cited in 18 COMPLETE
   cases) rest on omission from a replica table that lists only drifted rows. No gold example cites this kind of proof, so it is unconfirmed.
   It was kept because no better evidence exists for these accounts (any explicit observation already takes precedence), and treating them
@@ -400,4 +420,4 @@ Development calls, for context:
 | gemini-2.5-flash | screenshot comparison | 11 | 6,919 | 37,125 | $0.095 |
 | gemini-3.5-flash-lite | screenshots (**production**) | 11 | 15,965 | 8,322 | $0.026 |
 | gemini-2.5-flash | intent, custom cases E1–E3 (evaluation) | 1 | 384 | 667 | $0.002 |
-| **total** | | **44** | 48,061 | 79,409 | **$0.221** |
+| **total** | | **44** | 48,061 | 79,409 | **$0.2204** |

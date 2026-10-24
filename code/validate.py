@@ -121,6 +121,13 @@ def check_steps(case_id: str, status: str, steps: list, audit_at: str | None,
             if k in seen:
                 bad("duplicate_step", f"{k} appears more than once")
             seen.add(k)
+        # CONTRACT §11 invariant 6: no remediation without a finding on the same resource, and every remediated
+        # resource has a verification step.
+        by_phase = {ph: {(s["system_id"], s["resource_id"]) for s in steps if s["phase"] == ph} for ph in PHASES}
+        for res in sorted(by_phase["REMEDIATION"] - by_phase["FINDING"]):
+            bad("remediation_without_finding", f"{res[0]}/{res[1]} is remediated but has no FINDING")
+        for res in sorted(by_phase["REMEDIATION"] - by_phase["VERIFICATION"]):
+            bad("remediation_without_verification", f"{res[0]}/{res[1]} is remediated but never verified")
 
 
 def validate(output_path: Path, requests_path: Path, dataset_dir: Path, max_examples: int) -> bool:

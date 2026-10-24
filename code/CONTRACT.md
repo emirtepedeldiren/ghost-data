@@ -30,7 +30,7 @@ For a case with cutoff `T = audit_at`:
 |---|---|
 | evidence file | `captured_at <= T` (inclusive; proven by case_11 citing evidence_03 captured exactly at `T`) |
 | `system_activity` row | `event_time <= T` |
-| `user_audit_log` row | `event_time <= T` |
+| `user_audit_log` row | identity resolution uses the **full** history, regardless of `event_time`: identifiers only link records and never set state (ownership does not change over time) |
 | screenshot / PDF extraction | inherits the file's `captured_at` |
 
 A file captured after `T` is **never cited** and never sets state.
@@ -105,7 +105,8 @@ S1 load ─► S2 intent ─► S3 identity ─► S4 extract ─► S5 link ─
 ### S3 identity
 - Request email is matched case-insensitively against current `user_identities.email` and against every
   `user_audit_log.old_value` where `field_name='email'`. 418 eval emails match a current identity and 100 match only a historical one.
-- Subject identifiers = current row ∪ all audit-log old/new values (email, phone, email_hash) with `event_time <= T`, plus `user_id` and `name`.
+- Subject identifiers = current row ∪ all audit-log old/new values (email, phone, email_hash), plus `user_id` and `name`. The full history is used
+  (no `event_time` cutoff): identifiers only decide ownership, and state still comes only from evidence captured `<= T`.
 - Matching uses token boundaries (`support_864` must not match `support_8642`, `user_1` must not match `user_13`).
   Emails match case-insensitively (20 eval emails are uppercase). Near-miss emails are **not** matches
   (`g.silva76.jr@gmail.com` is not `g.silva76@gmail.com`).
@@ -121,7 +122,7 @@ S1 load ─► S2 intent ─► S3 identity ─► S4 extract ─► S5 link ─
 | `.png` | 11 | whole screenshot via vision extraction (D2) |
 
 ### S4 PNG extraction (D2)
-- The vision prompt lives in `code/prompts/vision_extract.md`. The output is cached as JSON per `file_id` and reused on every run.
+- The vision prompt lives in `code/prompts/vision_extract.md`. The response is cached per image (the cache key covers the provider, model, prompt, schema and image bytes) and reused on every run.
 - Every extracted id must match the expected pattern (`^(account|search|support|analytics|audit_record|data_flow|backup|export|tombstone|marketing|object|cache|email_delivery|legal_hold)_\d+$`,
   `^user_\d+$`, email RFC-lite). A non-matching value is stored as `unparsed` and flagged, never guessed.
 - Cross-check: each of the 11 PNGs (and the account-history PDF) has a `LINK_RESOURCE_IDENTITY` activity
@@ -224,7 +225,9 @@ inclusive boundary is load-bearing.
 | BACKUP_ARCHIVE | RESTORE_BLOCKED | — | — | VERIFY_RESTORE_BLOCKED |
 
 - `deletion_status = INCOMPLETE` iff any FINDING exists, otherwise `COMPLETE`.
-- **Verification covers every relevant resource**, including ones already compliant (sample case_11 steps 9 and 11, and case_06).
+- **Verification covers every linked resource with a state observation `<= T`**, including ones already compliant (sample case_11 steps 9
+  and 11, and case_06). In an INCOMPLETE case it also covers evidence-linked resources without one (fix 2); activity-only proposals and
+  D21 links without a state observation get no step.
 - **Fix 2 (Round 1).** In an INCOMPLETE case, a resource linked through an evidence file but with no state observation
   `<= audit_at` gets the verification of its required final state (empty evidence). Activity-only links get no step (D11, D14).
 - ACCOUNT_TOMBSTONE: the stable `user_id` reference may remain; name, email, phone and email_hash must be null.
@@ -267,7 +270,7 @@ The A-vs-B comparison is reported in the evaluation report.
 
 Provider: **Google Gemini** (D10 revised). Client: `code/llm/__init__.py`, one interface `LLMClient.generate(task, prompt,
 images=, json_schema=)`. Provider, per-task model IDs and list prices live in `code/config.toml`, never in logic. Responses
-are cached on disk (key = provider + model + task + inputs), and every call is appended to `code/cache/llm_calls.jsonl` with
+are cached on disk (key = provider + model + task + inputs), and every call is appended to `.work/llm_calls.jsonl` (dev log; the original API calls are in `code/llm_cache/calls.jsonl`) with
 token usage. `temperature` is sent and, if a model rejects it, retried once without it and memoized for that model.
 
 Models API listing (`.venv/bin/python code/tools/list_models.py`, 2026-10-24): 46 generateContent models. Image-input
@@ -287,7 +290,7 @@ run log), and PNGs are a stub that logs "vision pending".
 
 ## 10. Decision log
 
-For every case, `code/cache/decisions/<case_id>.json` records the subject identifiers, every linked resource with `via` and
+For every case, `.work/runs/<run-name>/decisions.jsonl` records the subject identifiers, every linked resource with `via` and
 locator, the state source, `category_source`, the chosen evidence and rejected alternatives, and any flags (ambiguous link,
 vision mismatch, post-T file skipped). This feeds the evaluation report and the AI interview.
 
@@ -458,3 +461,10 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
 - **D30:** absence by omission from replica tables only (64 eval accounts, 18 COMPLETE cases) is kept and documented as a known limitation
   (evaluation_report.md §7, §8). Explicit observations already take precedence, so no better evidence exists for these accounts.
   Treating them as unknown would drop verification steps with no evidence that the gold omits them.
+- **Round 5 (2026-10-24):**
+  - The validator now enforces §11 invariant 6 (remediation ⇒ finding and verification on the same resource).
+  - Compliance tests (`NoHardcodedAnswers`): no literal ids in the executable pipeline code; the pipeline never opens `sample_output.csv`;
+    it reads all dataset CSVs and every manifest file.
+  - The scan also found the screenshots' own ids used as examples in `code/prompts/vision_extract.md`. This is documented, and its fix
+    is pending approval because it needs 11 live calls.
+  - The docs were aligned with the code: full identity history, verification coverage, cache keys and paths.

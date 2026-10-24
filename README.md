@@ -1,7 +1,8 @@
 # Ghost Data Still Exists: deletion-audit agent
 
 HackerRank Orchestrate, October 2026. For each request in `dataset/deletion_requests.csv`, the agent decides whether the person
-asked for deletion. If they did, it finds every current and historical identifier, reconstructs the state of each linked
+asked for deletion. If they did, it collects the person's current identifiers and every historical value in the identity audit log,
+reconstructs the state of each linked
 record at `audit_at` from the evidence, applies `deletion_rules.csv`, and writes the findings, ordered remediation and
 verification steps to `output.csv` (`case_id,deletion_status,steps_json`).
 The full challenge contract is in [`problem_statement.md`](./problem_statement.md).
@@ -42,7 +43,7 @@ Expected result: config sha256 `58e1afb22468840b7d0f567291d1b684a6c1ab6cb4fa3270
 dataset/*.csv ──► S1 load ──► S2 intent ─────────────── LLM (cached): does the text authorize deletion?
                                │ NOT_APPLICABLE → []
                                ▼
-                  S3 identity: current + historical emails / phones / hashes / user_id (user_audit_log ≤ audit_at)
+                  S3 identity: current + historical emails / phones / hashes / user_id (full user_audit_log history; ids link, never set state)
                                │
 dataset/evidence/ ──► S4 extract: one Observation schema from every format
    .sql (sqlite3) .json .log (6 dialects, trace joins) .txt .pdf (text layer)

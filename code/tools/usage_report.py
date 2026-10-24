@@ -22,6 +22,7 @@ N_REQUESTS = sum(1 for _ in (DATASET_DIR / "deletion_requests.csv").open(encodin
 
 def main() -> int:
     calls = [json.loads(l) for l in (CODE / "llm_cache" / "calls.jsonl").open(encoding="utf-8")]
+    dev = [json.loads(l) for l in (CODE / "llm_cache" / "dev_calls.jsonl").open(encoding="utf-8")]
     prices = tomllib.loads((CODE / "config.toml").read_text(encoding="utf-8"))["llm"]["prices"]
     frozen = tomllib.loads((CODE / "config" / "frozen_v1.toml").read_text(encoding="utf-8"))
 
@@ -89,6 +90,11 @@ def main() -> int:
             f"`{m}` input ${prices[m]['input']:.2f} / output ${prices[m]['output']:.2f}" for m in sorted({c['model'] for c in prod})) +
         ". Output tokens include thinking tokens. The calls ran on the free tier, so the actual charge was $0; the costs above are list-price estimates.",
         "",
+        "Price check (pricing page re-read 2026-10-24, 'Last updated 2026-10-22 UTC', Standard paid tier): Gemini 2.5 Flash, input "
+        "\"$0.30 (text / image / video)\" ($1.00 audio), output \"$2.50\" including thinking tokens; Gemini 3.5 Flash-Lite, input "
+        "\"$0.30 (text / image / video / audio)\", output \"$2.50\". The two models have the same standard text/image price; they differ "
+        "only in audio input and context caching. All calls here used the standard (synchronous) API, not the Batch API ($0.15 / $1.25).",
+        "",
         "## Evaluation-only calls (not part of the final output)",
         "",
         "The participant evaluation cases E1-E3 (`code/evaluation/custom_cases.py`) needed their new request texts classified, "
@@ -103,11 +109,20 @@ def main() -> int:
         *[f"| {i} | {c['purpose']} | {c['model']} | {c['task']} | {c['image'] or 'batch of request texts'} | {c['created_ts']} | "
           f"{c['input_tokens']:,} | {c['output_tokens']:,} |" for i, c in enumerate(calls, 1)],
         "",
-        "## Development calls (context, not the final run)",
+        "## Total project LLM spend (all API calls, list price)",
         "",
-        "Before the freeze, development also used 16 calls on `gemini-3.6-flash` (unbatched intent, abandoned at the free-tier quota) and "
-        "11 calls on `gemini-2.5-flash` (the screenshot model comparison, D17). They are listed in `evaluation_report.md` §10 and did not "
-        "contribute to `output.csv`.",
+        "Development calls did not contribute to `output.csv`: 16 on `gemini-3.6-flash` (unbatched intent, abandoned at the free-tier quota) "
+        "and 11 on `gemini-2.5-flash` (the screenshot model comparison, D17); rows in `code/llm_cache/dev_calls.jsonl`. Failed requests "
+        "(timeouts, HTTP 429) returned no token counts, so they cannot be costed here; on the free tier nothing was charged.",
+        "",
+        "| Purpose | Calls | Input tokens | Output tokens | Est. cost (USD) |",
+        "|---|---|---|---|---|",
+        *[f"| {name} | {len(rows)} | {sum(c['input_tokens'] for c in rows):,} | {sum(c['output_tokens'] for c in rows):,} | "
+          f"${sum(cost(c['model'], c['input_tokens'], c['output_tokens']) for c in rows):.4f} |"
+          for name, rows in (("production (behind output.csv)", prod), ("evaluation (E1-E3)", evals), ("development", dev))],
+        f"| **total project** | **{len(prod) + len(evals) + len(dev)}** | **{sum(c['input_tokens'] for c in prod + evals + dev):,}** | "
+        f"**{sum(c['output_tokens'] for c in prod + evals + dev):,}** | "
+        f"**${sum(cost(c['model'], c['input_tokens'], c['output_tokens']) for c in prod + evals + dev):.4f}** |",
         "",
     ]
     out = CODE / "evaluation" / "usage_report.md"

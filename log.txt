@@ -591,3 +591,44 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-24T15:38:28Z] Round 5: claims vs code, price check, denominators, compliance tests
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: §0 and usage_report reviewed line by line. Strong — the "165 of 254 reported-COMPLETE requests are still INCOMPLETE" line is exactly the business result. Four fixes before this is final.
+
+FINDING 1 — overclaim in §0, approach line 4
+EVIDENCE: it says "Another person's data is never attributed to a requester." Under revised D13, marketing_001 is attributed to case_63 although its screenshot shows a different name and email.
+REQUEST: rewrite the line to state the actual rule: a link is vetoed when the observed identity resolves to a different known user; an unresolvable identity does not veto, and the one such case (case_63, D13) is flagged and listed in §8. No claim in the report may be stronger than the code.
+Also scan the whole report, README and CONTRACT for any other absolute claim ("never", "always", "every") and check each against the code; list what you changed.
+
+FINDING 2 — suspicious price
+EVIDENCE: usage_report lists gemini-3.5-flash-lite at the same price as gemini-2.5-flash ($0.30 / $2.50). Lite tiers are usually cheaper.
+REQUEST: re-check both prices on the pricing page (fetch it, quote the two rows) and regenerate usage_report.md if either is wrong. Also add one line: total project LLM spend including development calls, at list price.
+
+FINDING 3 — denominators
+EVIDENCE: tuning recall 94.63% (141/149) vs field accuracy 94.00% (141/150).
+REQUEST: state in §1 exactly what each metric divides by (I assume field accuracy uses aligned positions including the extra step). Show the numerator/denominator next to each percentage in the §0 table.
+
+FINDING 4 — unproven requirement
+EVIDENCE: the task requires "avoid hardcoded test labels or file-specific answers"; nothing in the report proves it.
+REQUEST: add a unit test that (a) scans code/audit, code/main.py and code/llm for literal ids (case_\d+, evidence_\d+, account_\d+, user_\d+, activity_\d+, audit_\d+ and similar) and fails on any hit outside tests and evaluation, and (b) asserts the pipeline never opens sample_output.csv. If it finds anything, report it before fixing. Add rows to the compliance table for this requirement, "reads the CSV files and local media files", and "prompts in source/Markdown" (code/prompts/*.md).
+
+Yes — fast-forward main after this turn.
+ACCEPTANCE: output.csv byte-identical, validator and tests pass (including the new one), zip rebuilt, show me the rewritten approach line 4 and the price check. Commit, push, fast-forward main.
+
+Agent Response Summary:
+Price check: the pricing page fetched twice gives Standard paid-tier prices for both models of $0.30 input / $2.50 output (they differ only in audio input and caching), so the prices were correct. The usage report now quotes both rows and adds total project spend (44 calls, $0.2204), with the development calls committed in code/llm_cache/dev_calls.jsonl. The compliance scan (reported before fixing) found only comments/docstrings in the pipeline code, plus a real leak: code/prompts/vision_extract.md lists the screenshots' own ids as examples. Extractions show no injection (tombstone_17 not extracted), but fixing it needs 11 live calls, so it is documented and pending approval. Added the NoHardcodedAnswers tests (23/23 pass), implemented validator invariant 6 (it catches a planted error), rewrote approach lines 1 and 4, added fractions and exact denominators, added compliance rows and section 8 entries, and aligned README/CONTRACT claims with the code (full identity history, verification coverage, cache keys and paths). output.csv is byte-identical.
+
+Actions:
+* WebFetch of the Gemini pricing page (2 queries); scratchpad scans; vision cache inspection; no LLM API calls
+* Edited code/validate.py, code/tests/test_core.py, code/tools/usage_report.py (+ regenerated usage_report.md), code/evaluation/evaluation_report.md, README.md, code/CONTRACT.md; created code/llm_cache/dev_calls.jsonl
+* Frozen run (byte-identical), unit tests, validator incl. planted-error check, table check; rebuilt code.zip; git commit, push, fast-forward main
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
