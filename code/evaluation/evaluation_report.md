@@ -46,7 +46,7 @@ active syncs or restorable backups. 10 requests are not deletion requests at all
 **Further checks:** participant cases E1–E5 pass, 5/5 (§6). A manual audit of 15 mechanically sampled eval outputs found no definite
 error (§7).
 
-<!-- D31:cost -->**Cost:** 16 LLM calls, 73,013 tokens, est. **$0.1046 total, $0.000202 per request** at list price. The final run was served from the
+<!-- D31:cost -->**Cost:** 16 LLM calls, 73,194 tokens, est. **$0.1056 total, $0.000204 per request** at list price. The final run was served from the
 response cache with 0 live calls (`usage_report.md`).<!-- /D31:cost -->
 
 **Requirement compliance** (README.md and problem_statement.md → where it is):
@@ -62,7 +62,7 @@ response cache with 0 live calls (`usage_report.md`).<!-- /D31:cost -->
 | Failures found and improvements made | README, problem statement | §3 (before → after per round), §4 (failures and fixes), §5 (A/B), §7 (manual audit) |
 | Usage: providers, models, calls, input/output tokens, total and average tokens per request, total and per-request cost, per-model and overall | README, problem statement | `usage_report.md` |
 | Reports in `code/evaluation/`, metrics written in Markdown | README | this file and `usage_report.md` |
-| No hardcoded test labels or file-specific answers | task brief | `code/tests/test_compliance.py` `NoHardcodedAnswers`: the executable code of `code/audit`, `code/llm`, `main.py`, `contract.py` and `validate.py` contains no literal case/evidence/resource/user/activity/audit id or email (comments and docstrings excluded). <!-- D31:compliance -->**Known exception (fix pending, D31):** the cached screenshot responses were produced by a prompt that listed ids printed in the screenshots; the active prompt is clean (`PromptLeaks` test), see §8<!-- /D31:compliance --> |
+| No hardcoded test labels or file-specific answers | task brief | `code/tests/test_compliance.py` `NoHardcodedAnswers`: the executable code of `code/audit`, `code/llm`, `main.py`, `contract.py` and `validate.py` contains no literal case/evidence/resource/user/activity/audit id or email (comments and docstrings excluded). <!-- D31:compliance -->Prompts contain no id or email that occurs in `dataset/` (`PromptLeaks` test, including the prompts pinned in the frozen config; fixed by D31)<!-- /D31:compliance --> |
 | Gold answers never read by the pipeline | task brief | same test: a full sample run, with every file open recorded, never opens `sample_output.csv` (only the scorer reads it) |
 | Reads the CSV files and local media files | README, problem statement | same test: the run opens all 7 dataset CSVs and every file in `evidence_files.csv`, including the 11 PNGs and 4 PDFs |
 | Prompts in source / Markdown files | README | `code/prompts/intent.md`, `code/prompts/vision_extract.md` (hash-pinned in `code/config/frozen_v1.toml`) |
@@ -150,7 +150,7 @@ Other eval facts:
 - Validator: PASS, 0 errors, 0 warnings. No row hits D27 `NO_OBSERVABLE_RECORDS`.
 - Identity: 418 request emails match a current identity, 100 only a historical one.
 - Output: `output.csv` sha256 `774aa9ca3e0073383fc9251ce17217b684c4b06161c5385c712945a420d1cb1f`, produced by config sha256
-  `1f39d309dbb8d6611cd987feb0c577b3417642c005b615fbfbbeef91242ca612`.
+  `44c9b1087823b2216452aadea291c46bf12612ac0abaa1a3137e22b9748c4c11`.
 
 ## 3. Results round by round (before → after)
 
@@ -371,15 +371,11 @@ The eval set has no labels, and D20 alone changed the steps of 160 eval cases, s
 
 ## 8. Known limitations
 <!-- D31:limitation -->
-- **Screenshot prompt used the screenshots' own ids (found in the Round 5 compliance scan; fix D31 approved, pending).** The prompt
-  that produced the cached screenshot responses gave example ids (`account_5762`, `search_428`, `data_flow_1121`, `backup_9287`,
-  `export_1260`, `support_1034`, `analytics_7438`, `audit_record_003`, `tombstone_17`, `marketing_001`, `user_11`) that are printed in
-  the 11 dataset screenshots. The check found no sign that this injected anything: `tombstone_17` is listed but not printed in its
-  screenshot, and the model did not extract it; every extracted example id sits in a table or panel next to other ids from the same
-  image. It has been replaced by a neutral prompt (`code/prompts/vision_extract.md`, id formats as patterns only; superseded text kept
-  in `code/prompts/legacy/` only because the cached responses are keyed by it). `code/tools/refresh_vision.py` re-extracts the 11
-  screenshots after the quota reset (Oct 25, 07:00 UTC). If `output.csv` is unchanged it switches the frozen config to the new prompt;
-  if not, the current output and this limitation stand.
+- **Screenshot prompt replaced (D31, fixed 2026-10-25).** The prompt that originally produced the screenshot responses gave
+  example ids that are printed in the dataset's screenshots. It was replaced by a neutral prompt (`code/prompts/vision_extract.md`,
+  id formats as patterns only) and the 11 screenshots were re-extracted: 83 extracted field(s) changed, and `output.csv`
+  is byte-identical. The 11 superseded calls are reported as development calls in `usage_report.md`; no prompt contains a
+  dataset id or email (`PromptLeaks` test).
 <!-- /D31:limitation -->
 - **Catalog link kept against an unresolvable identity (D13 revised): case_63.** `activity_4008` links `marketing_001` to the requester,
   while its screenshot (evidence_60) shows *Soo-jin Park, sj.park@naver.com, +82 10-5837-9451*, an identity that matches no known user.

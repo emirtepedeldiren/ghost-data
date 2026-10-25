@@ -20,7 +20,7 @@ python3 -m venv .venv && .venv/bin/pip install -r code/requirements.txt     # se
 
 The run uses the frozen configuration `code/config/frozen_v1.toml` and is **cache-only**: every LLM response comes from the
 committed cache `code/llm_cache/`, and a cache miss aborts the run instead of calling the API. Expected result: config sha256
-`1f39d309dbb8d6611cd987feb0c577b3417642c005b615fbfbbeef91242ca612`, `output.csv` sha256
+`44c9b1087823b2216452aadea291c46bf12612ac0abaa1a3137e22b9748c4c11`, `output.csv` sha256
 `774aa9ca3e0073383fc9251ce17217b684c4b06161c5385c712945a420d1cb1f`. Run and decision logs go to `.work/runs/<name>/`.
 Windows: use `.venv\Scripts\python` in place of `.venv/bin/python`. Lint: `pip install -r code/requirements-dev.txt && ruff check code`.
 
@@ -108,8 +108,8 @@ round-by-round improvements: `code/evaluation/evaluation_report.md`.
 - **Not an installable package.** Entry points add `code/` to `sys.path` instead of using a `pyproject.toml` package; changing
   the import structure was deferred to avoid risk around the frozen run.
 <!-- D31:readme -->
-- **Screenshot prompt refresh pending.** The cached screenshot responses were produced by a superseded prompt kept in
-  `code/prompts/legacy/`; `code/tools/refresh_vision.py` (D31) re-extracts them with the neutral prompt.
+- **Screenshot prompt replaced (D31).** The screenshots were re-extracted with the neutral prompt
+  (`code/prompts/vision_extract.md`); `output.csv` is byte-identical and no prompt contains a dataset id.
 <!-- /D31:readme -->
 
 Full list: `code/evaluation/evaluation_report.md` §8.

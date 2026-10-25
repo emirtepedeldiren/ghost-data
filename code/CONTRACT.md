@@ -455,7 +455,7 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
 - **D28 (rejected):** request scoping for `account_6523` (case_17). It fixes 1 tuning step and changes 0 eval outputs: fitting, not generalizing.
 - **D29 (rejected):** a deterministic tie-break that assigns interchangeable twin resources to one candidate request. An audit tool must not
   attribute another person's data to a requester.
-- **Freeze:** `code/config/frozen_v1.toml` (sha256 `1f39d309dbb8d6611cd987feb0c577b3417642c005b615fbfbbeef91242ca612`) pins the models, prompt
+- **Freeze:** `code/config/frozen_v1.toml` (sha256 `44c9b1087823b2216452aadea291c46bf12612ac0abaa1a3137e22b9748c4c11`) pins the models, prompt
   hashes, L2 thresholds, intent batch size and pipeline flags. `python3 code/main.py` loads it by default and aborts on any mismatch with
   the code. The run is cache-only: the 17 needed responses (16 production, 1 evaluation) are committed in `code/llm_cache/` with their
   original call-log rows in `code/llm_cache/calls.jsonl`. A cache miss raises `CacheMiss` and aborts the run; no key is needed.
@@ -486,3 +486,4 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
   - Case number follows `requested_at` only within slots (424/440 pairs reversed), and not consistently across files (Spearman −0.79
     eval, +0.11 samples).
   - D29 stands; output.csv is unchanged (evaluation_report.md §8).
+- **D31 done (2026-10-25T07:34:14Z, D34 resume):** screenshots re-extracted with the neutral prompt (2 staged + 9 call(s) in the resumed run); 83 extracted field(s) changed; output.csv byte-identical; frozen_v1.toml repointed to `code/prompts/vision_extract.md` (config sha256 `44c9b1087823b2216452aadea291c46bf12612ac0abaa1a3137e22b9748c4c11`); superseded prompt deleted.
