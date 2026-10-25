@@ -486,4 +486,7 @@ timing assignments). No parser gaps, identity misses or ordering errors among th
   - Case number follows `requested_at` only within slots (424/440 pairs reversed), and not consistently across files (Spearman −0.79
     eval, +0.11 samples).
   - D29 stands; output.csv is unchanged (evaluation_report.md §8).
+- **D33 (2026-10-24):** the case-order artifact stays rejected (D29/D32) and is not reopened. The Round 7 unclaimed-data audit
+  (label-free: unlinked resource ids by prefix, `cache_`/`email_delivery_` origins, identifier-variant scan) found 0 real misses;
+  impact 0 cases, 0 steps; no code change (evaluation_report.md §7).
 - **D31 done (2026-10-25T07:34:14Z, D34 resume):** screenshots re-extracted with the neutral prompt (2 staged + 9 call(s) in the resumed run); 83 extracted field(s) changed; output.csv byte-identical; frozen_v1.toml repointed to `code/prompts/vision_extract.md` (config sha256 `44c9b1087823b2216452aadea291c46bf12612ac0abaa1a3137e22b9748c4c11`); superseded prompt deleted.
