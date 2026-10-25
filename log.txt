@@ -1050,3 +1050,34 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-25T07:40:40Z] Final cleanup: superseded screenshot cache removed, D33 recorded, final zip
+
+User Prompt (verbatim, secrets redacted):
+CONTEXT: READY TO SUBMIT accepted — all 9 calls succeeded first try, output byte-identical, leak removed, fresh-clone and unzipped runs reproduce 774aa9ca…. Excellent work on the resume.
+
+FINAL CLEANUP (docs and dead files only):
+1. The 11 old screenshot cache files: first check (a) whether any of them contain prompt text with dataset ids, (b) whether usage_report.py, any test, or the dev-call accounting reads them. If nothing reads them, remove them; the development calls stay accounted for in dev_calls.jsonl and usage_report.md. If something does read them, keep them and tell me why.
+2. Add D33 (case-order artifact stays rejected; Round 7 unclaimed-data audit found 0 real misses) to CONTRACT.md.
+3. Rebuild code.zip, re-verify with a fresh clone: cache-only run gives 774aa9ca…, validator and tests pass.
+4. Print the final submission facts: sha256 and size of code.zip and output.csv; output.csv header and row count; code.zip entry count; confirm no .env, legacy prompt, dataset/ or nested archive inside.
+5. Commit, push, fast-forward main. Append this turn's log.txt entry and commit it LAST.
+
+After this turn: no further changes. The next thing I do is submit.
+
+Agent Response Summary:
+The 11 superseded screenshot entries (keys from the pre-switch calls.jsonl) hold only the model response and token usage, no prompt text. No code, test, doc or usage file references their keys; usage_report.py reads only calls.jsonl/dev_calls.jsonl. The only generic reader is prompt_leaks.py (it globs llm_cache/*.json for printed ids), and without the 11 files its vocabulary is unchanged (11,694 ids, 0 lost; the legacy prompt would still be flagged for all 11 ids). So they were removed (325b021) and D33 was added to CONTRACT.md §20. code.zip rebuilt: sha256 b7898187..., 168,653 bytes, 79 entries (68 files), identical to a fresh clone of main; the clone and the unzipped archive both reproduce output.csv 774aa9ca... (608,762 bytes, 518 rows, header case_id,deletion_status,steps_json); validator PASS; 26 tests OK with no skips. No .env, legacy prompt, dataset/, nested archive, call log or caches inside.
+
+Actions:
+* Checked cache contents, references and the PromptLeaks vocabulary (read-only script); git rm of 11 code/llm_cache/*.json; edited code/CONTRACT.md (D33)
+* Tests, frozen cache-only run, validator; commit 325b021, push, main fast-forwarded
+* code.zip rebuilt with the README packaging command; fresh clone + unzipped run verification in scratchpad
+* This log entry committed last; pushed; main fast-forwarded
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
