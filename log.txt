@@ -999,3 +999,54 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-25T07:36:54Z] D34 executed: D31 refresh resumed and switched; READY TO SUBMIT
+
+User Prompt (verbatim, secrets redacted):
+Read ./AGENTS.md first and follow its logging format (append to the existing log.txt, never overwrite).
+
+CONTEXT: The app was closed by accident mid-session. Rebuild from the repo, not memory: code/CONTRACT.md (D1–D33, especially D26 and D31), the last 5 log.txt entries, git log --oneline -10, git status.
+Today is Oct 25. Deadline 12:30 UTC (15:30 Istanbul). I plan to submit around 09:00 UTC.
+
+WHERE WE WERE: refresh_vision.py (D31 prompt-leak refresh) stalled earlier today after 2 of 11 screenshots because of silent capped retries in provider.call(). The 2 good responses are staged in .work/vision_refresh/. Then I gave this decision, which may or may not have been executed before the app closed:
+
+DECISION D34 (resume the D31 refresh):
+- Resume reusing the 2 staged responses; LLM_ATTEMPTS=1 so one counted call = one HTTP request; flushed progress lines before and after every call. No pipeline code changes.
+- Budget: --max-calls 11 (9 remaining screenshots + 2 retries). Worst case today: 5 already sent + 11 = 16, under the provider's 20/day. Supersedes D31's cap of 12.
+- Watch #3 (backup_restore_console): show its restore-related fields old vs new explicitly.
+- Fallback cutoff: 08:30 UTC (11:30 Istanbul). If not READY TO SUBMIT by then, keep the current output.csv with no further calls.
+- Last night's skipped turn (deterministic logs + coverage): dropped.
+
+STEP 1 — diagnose before anything else, no live calls:
+- Is any refresh_vision.py or python process still running?
+- git status and git diff --stat: did the script change start? Is it complete?
+- output.csv sha256 (774aa9ca… if untouched); frozen_v1.toml prompt path; does code/prompts/legacy/ exist?
+- .work/llm_calls.jsonl and .work/vision_refresh/: any new live calls since 07:12 UTC? Recount today's HTTP requests to gemini-3.5-flash-lite (worst case).
+- Make sure log.txt has an entry for the interrupted turn; add one marked INTERRUPTED (app closed) if missing.
+Report this in at most 10 lines.
+
+STEP 2 — if nothing is running and the state is consistent, continue D34 in this order:
+1. Finish the three script changes (resume, progress lines, exact counting).
+2. Run both no-network dry runs in a repo copy. Show the result.
+3. Commit log.txt and the script change, push.
+4. Run the live refresh with LLM_ATTEMPTS=1 --max-calls <11 minus any calls already made since the stall>. Report per-call progress, the extraction diff (with #3's restore fields), and the output.csv sha256 verdict.
+5. On READY TO SUBMIT: commit, push, fast-forward main, add the Round 7 unclaimed-data paragraph to evaluation_report.md §7 (docs only), rebuild code.zip, verify with a fresh clone. On exit 2: stop and show me the diff.
+If anything in Step 1 is inconsistent, stop after Step 1.
+
+Agent Response Summary:
+Step 1 consistent: no process running, only log.txt modified (D34 script change had not started), output.csv 774aa9ca..., frozen config on the legacy prompt, legacy dir present, no live call since 07:12:53Z; the D34 turn had no log entry, so an INTERRUPTED one was added. refresh_vision.py now keeps staged responses, forces LLM_ATTEMPTS=1 and wraps provider.call so --max-calls (default 11) counts HTTP requests exactly, with flushed lines before/after each; both --mock dry runs in repo copies passed (identical -> READY TO SUBMIT, different -> exit 2 with the case_35 row diff), plus a budget-cap test. Live run 07:33-07:34Z: 2 reused + 9 calls, all ok first try, 83 extraction fields changed (#3 restore state unchanged: same 4 backups and emails, Tier=Archive moved to status, retention end 26 Jul 2026 kept), output.csv byte-identical -> switch, validator and tests pass, READY TO SUBMIT. Today's gemini-3.5-flash-lite HTTP requests: 11 logged + 1-3 unlogged at 07:12Z = 12-14 worst case. Round 7 paragraph added to evaluation_report.md §7; code.zip rebuilt and verified against a fresh clone of main (same files, cache-only run gives 774aa9ca..., validator PASS, tests OK) and run from the unzipped archive.
+
+Actions:
+* ps/pgrep, git status/diff/log, sha256, cat/grep of frozen_v1.toml, CONTRACT.md, llm/__init__.py, refresh_vision.py, .work/llm_calls.jsonl
+* Edited code/tools/refresh_vision.py (D34); dry runs in scratchpad copies dryA/dryB/dryC without .env
+* Commits 92fa443 (D34 script + log), 5175480 (D31 switch output), 1d9aeeb (§7 Round 7 paragraph); pushed; main fast-forwarded
+* Live: .venv/bin/python -u code/tools/refresh_vision.py --max-calls 11 (output .work/refresh_live_0725.out)
+* code.zip rebuilt with the README packaging command; fresh clone + unzip verification in scratchpad
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
