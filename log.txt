@@ -936,3 +936,66 @@ branch=phase0-contract-and-eval
 repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-10-25T07:20:22Z] SESSION START
+
+tool=Claude Code
+model=claude-opus-5-5[1m]
+Repo Root: /Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+Branch: phase0-contract-and-eval
+Worktree: main
+Parent Agent: none
+Language: py
+Time Remaining: 5h 9m (deadline 2026-10-25T12:30Z, supplied by the user)
+
+## [2026-10-25T07:20:22Z] D31 refresh stalled: diagnosis only (no live calls)
+
+User Prompt (verbatim, secrets redacted):
+Read ./AGENTS.md first and follow its logging format (append to the existing log.txt, never overwrite).
+
+CONTEXT: Context was cleared. Rebuild from the repo, not memory: code/CONTRACT.md (decisions D1–D33, especially D26 and D31), the last 5 log.txt entries, git log --oneline -10, git status.
+Today is Oct 25; submission deadline is 12:30 UTC (15:30 Istanbul).
+
+WHAT HAPPENED: at ~07:12 UTC I started `.venv/bin/python code/tools/refresh_vision.py` (the D31 prompt-leak refresh). It printed nothing for a few minutes, so I stopped it manually, then cleared the session.
+
+REQUEST — diagnose only, no live calls:
+1. Repo state: git status; output.csv sha256 (expected 774aa9ca… if untouched); does frozen_v1.toml point at the legacy or the new prompt; does code/prompts/legacy/ still exist.
+2. .work/ staging and call logs: how many live calls were made today, which succeeded, any errors or timeouts, how much of the 12-call budget is used.
+3. Why there was no output: stdout buffering, a hung HTTP call without a timeout, a retry loop, or something else.
+4. Whether last night's final turn (deterministic logs across PYTHONHASHSEED + coverage) completed and was committed.
+5. Propose the next step: resume using already-staged responses, rerun with a fix (per-call timeout, progress lines with flush=True), or apply the D31 fallback. Do not run anything live until I approve.
+
+Agent Response Summary:
+Repo untouched: tree clean at 1cef703, output.csv 774aa9ca..., frozen_v1.toml still points at code/prompts/legacy/vision_extract_frozen_v1.md, legacy dir present, no leftover process. Today: preflight and time gate passed at 07:12:29 (11 old cache reads), 2 live calls succeeded (screenshots 1-2, 07:12:42 and 07:12:53, staged and valid), then screenshot 3 (backup_restore_console) logged nothing. Cause: not buffering (say() flushes) and not a missing timeout; GeminiProvider retries up to 3 HTTP attempts with a 60 s timeout and 2/4/8 s sleeps, all silent and unlogged, so one image can be quiet for about 194 s, and --max-calls counts outer attempts, not HTTP requests (worst case 36). Today 3-5 HTTP requests were sent to gemini-3.5-flash-lite (1-3 unlogged). Last night's PYTHONHASHSEED/coverage turn left no log entry, commit or file, so it did not happen. Proposed fix: resume (keep staged entries), LLM_ATTEMPTS=1, progress lines per call; awaiting approval.
+
+Actions:
+* git status/log/reflog/stash; sha256 of output.csv; read frozen_v1.toml, CONTRACT D25-D32, refresh_vision.py, code/llm/__init__.py, code/audit/vision.py; ps
+* Offline (cache-only, no key) cache-key mapping of staged entries and old-vs-new comparison for screenshots 1-2; .work/llm_calls.jsonl backed up and restored around it (1402 rows, unchanged)
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-10-25T07:20:22Z] D34 decision (resume D31 refresh) - INTERRUPTED (app closed)
+
+User Prompt (verbatim, secrets redacted):
+[Verbatim text not recoverable: the app closed before this turn was logged. The user restated it in the next turn:]
+DECISION D34 (resume the D31 refresh): resume reusing the 2 staged responses; LLM_ATTEMPTS=1 so one counted call = one HTTP request; flushed progress lines before and after every call. No pipeline code changes. Budget: --max-calls 11 (9 remaining screenshots + 2 retries); worst case today 5 + 11 = 16 < 20/day; supersedes D31's cap of 12. Watch #3 (backup_restore_console) restore fields old vs new. Fallback cutoff 08:30 UTC. Last night's skipped turn (deterministic logs + coverage): dropped.
+
+Agent Response Summary:
+INTERRUPTED (app closed). Reconstructed at 07:30Z from the repo: no file changed by this turn (git diff touches only log.txt; refresh_vision.py and code/llm/__init__.py mtimes are 2026-10-24), no process running, no live call made (.work/llm_calls.jsonl still 1402 rows, last live call 07:12:53Z), output.csv unchanged (774aa9ca...). The timestamp is the last known time before the interruption (previous entry).
+
+Actions:
+* none recoverable (no file, commit or call attributable to this turn)
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5[1m]
+branch=phase0-contract-and-eval
+repo_root=/Users/emirtepedeldiren/Documents/dev/hackerrank-october/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

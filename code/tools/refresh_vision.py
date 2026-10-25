@@ -11,7 +11,9 @@ Steps:
      success branch edits exists. Nothing has been called or changed yet.
   a. time: refuses before the next 07:00 UTC reset after the last production screenshot call (skipped with --mock).
   b. re-extract the 11 PNGs with code/prompts/vision_extract.md into a staging cache (.work/vision_refresh/cache). The old
-     cache entries in code/llm_cache/ are not touched. At most --max-calls API calls (default 12 = 11 + 1 retry).
+     cache entries in code/llm_cache/ are not touched. Responses already staged by an earlier (interrupted) run are reused
+     without a call (D34 resume). LLM_ATTEMPTS is forced to 1, so every counted call is exactly one HTTP request; at most
+     --max-calls of them (default 11), each with a flushed progress line before and after it.
   c. compare old vs new extractions field by field per screenshot; print the differences.
   d. run the pipeline cache-only with a candidate config (new prompt; old + staged cache) and diff output.csv against the
      current one (its sha256 must stay 774aa9ca...).
@@ -22,7 +24,8 @@ Steps:
   f. different: change nothing in the repo, print the row-level output diff and the extraction diffs, exit 2 (user decision;
      the decided fallback is to keep the current output and the documented limitation).
 
-Decisions: D31 (approved: at most 12 live calls after the quota reset), D26 (the result stays cache-only).
+Decisions: D31 (approved), D34 (resume, one HTTP request per counted call, at most 11; supersedes D31's cap of 12),
+D26 (the result stays cache-only).
 """
 from __future__ import annotations
 
@@ -37,6 +40,10 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import os
+
+os.environ["LLM_ATTEMPTS"] = "1"   # D34: no silent provider retries; must be set before llm.load_dotenv (setdefault) runs
 
 CODE = Path(__file__).resolve().parents[1]
 ROOT = CODE.parent
@@ -163,7 +170,7 @@ def main() -> int:
     """
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mock", choices=("identical", "different"), help="no network: answer from the old extractions")
-    ap.add_argument("--max-calls", type=int, default=12)
+    ap.add_argument("--max-calls", type=int, default=11, help="HTTP requests allowed in this run (D34)")
     args = ap.parse_args()
     import llm
     from audit import vision
@@ -212,9 +219,12 @@ def main() -> int:
         say(f"a. time OK: {now:%Y-%m-%dT%H:%M}Z >= reset {reset:%Y-%m-%dT%H:%M}Z")
 
     # b. re-extract into a staging cache ------------------------------------------------------------------------
+    # D34 resume: keep the responses staged by an earlier run (their cache keys embed the new prompt); clear the rest.
     if STAGE.exists():
-        shutil.rmtree(STAGE)
-    (STAGE / "cache").mkdir(parents=True)
+        for f in STAGE.iterdir():
+            if f.name != "cache":
+                shutil.rmtree(f) if f.is_dir() else f.unlink()
+    (STAGE / "cache").mkdir(parents=True, exist_ok=True)
     stage_cfg = STAGE / "config_stage.toml"
     stage_cfg.write_text(config_with_new_prompt(frozen_text, cache_dir=(STAGE / "cache").relative_to(ROOT).as_posix(),
                                                  cache_only=False), encoding="utf-8")
@@ -225,30 +235,57 @@ def main() -> int:
         install_mock(args.mock, old_texts)
     client = llm.LLMClient(stage_cfg, cache_only=False)
     assert vision.prompt_text(client) == NEW_PROMPT.read_text(encoding="utf-8")
-    new, made, new_calls = {}, 0, []
-    for p in pngs:
+    provider = client.provider
+    if not args.mock and getattr(provider, "attempts", None) != 1:
+        raise SystemExit(f"b. refusing: provider makes {getattr(provider, 'attempts', '?')} HTTP attempts per call, D34 requires 1")
+    counter = {"made": 0, "label": ""}
+    real_call = provider.call
+
+    def counted_call(*a, **kw):   # D34: one counted call = one HTTP request, announced before and after
+        if counter["made"] >= args.max_calls:
+            raise SystemExit(f"b. call budget of {args.max_calls} exhausted; staged entries kept in {STAGE}, repo unchanged")
+        counter["made"] += 1
+        n, t0 = counter["made"], time.time()
+        say(f"b. {counter['label']}: call {n}/{args.max_calls} sent {now_utc()} (timeout {getattr(provider, 'timeout', 0):.0f}s)")
+        try:
+            out = real_call(*a, **kw)
+        except Exception as e:
+            say(f"b. {counter['label']}: call {n} FAILED after {time.time() - t0:.1f}s ({str(e)[:160]})")
+            raise
+        say(f"b. {counter['label']}: call {n} ok after {time.time() - t0:.1f}s ({out[1]} in / {out[2]} out tokens)")
+        return out
+
+    provider.call = counted_call
+    vision_key = lambda p: client._cache_key(client.models["vision"], "vision", vision.prompt_text(client),  # noqa: E731
+                                             "Transcribe the customer records in this screenshot.", [p], vision.VISION_SCHEMA)
+    new, new_calls, reused = {}, [], 0
+    for i, p in enumerate(pngs, 1):
         for attempt in (1, 2):
-            if made >= args.max_calls:
-                raise SystemExit(f"b. call budget of {args.max_calls} exhausted; staged entries kept in {STAGE}, repo unchanged")
-            made += 1
-            ts = now_utc()
+            counter["label"] = f"[{i}/{len(pngs)}] {p.name}"
+            staged = STAGE / "cache" / f"{vision_key(p)}.json"
+            ts = (datetime.fromtimestamp(staged.stat().st_mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                  if staged.exists() else now_utc())
             try:
                 new[p.name] = vision.extract(client, p)
+                if new[p.name]["_cached"]:
+                    reused += 1
+                    say(f"b. {counter['label']}: reused staged response from {ts} (no call)")
                 break
             except (llm.LLMError, ValueError) as e:
-                say(f"b. {p.name}: attempt {attempt} failed ({str(e)[:100]})")
-                bad_key = client._cache_key(client.models["vision"], "vision", vision.prompt_text(client),
-                                            "Transcribe the customer records in this screenshot.", [p], vision.VISION_SCHEMA)
-                (STAGE / "cache" / f"{bad_key}.json").unlink(missing_ok=True)   # an unparsable answer must not be served on retry
+                say(f"b. {counter['label']}: attempt {attempt} failed ({str(e)[:100]})")
+                staged.unlink(missing_ok=True)   # an unparsable answer must not be served on retry
                 if attempt == 2:
                     raise SystemExit(f"b. {p.name} failed twice; repo unchanged") from None
-        key = client._cache_key(client.models["vision"], "vision", vision.prompt_text(client),
-                                "Transcribe the customer records in this screenshot.", [p], vision.VISION_SCHEMA)
+                if not args.mock:
+                    time.sleep(5)
+        key = vision_key(p)
         entry = json.loads((STAGE / "cache" / f"{key}.json").read_text(encoding="utf-8"))
         new_calls.append({"cache_key": key, "purpose": "production", "provider": client.provider_name,
                           "model": client.models["vision"], "task": "vision", "image": p.name, "created_ts": ts,
                           "input_tokens": entry["input_tokens"], "output_tokens": entry["output_tokens"]})
-    say(f"b. re-extracted {len(new)} screenshots with {made} {'mock' if args.mock else 'API'} call(s); old cache untouched")
+    made = counter["made"]
+    say(f"b. re-extracted {len(new)} screenshots: {reused} reused from staging, {made} {'mock' if args.mock else 'HTTP'} "
+        f"call(s) in this run; old cache untouched")
 
     # c. compare extractions --------------------------------------------------------------------------------------
     ex_diffs = {p.name: compare(old[p.name], new[p.name]) for p in pngs}
@@ -331,7 +368,8 @@ def main() -> int:
     README.write_text(re.sub(rf"<!-- {README_MARKER} -->.*?<!-- /{README_MARKER} -->", lambda _: readme_block, readme_text, flags=re.S),
                       encoding="utf-8")
     with (CODE / "CONTRACT.md").open("a", encoding="utf-8") as f:
-        f.write(f"- **D31 done ({now_utc()}):** screenshots re-extracted with the neutral prompt ({made} call(s)); {n_diff} extracted "
+        f.write(f"- **D31 done ({now_utc()}, D34 resume):** screenshots re-extracted with the neutral prompt ({reused} staged + {made} "
+                f"call(s) in the resumed run); {n_diff} extracted "
                 f"field(s) changed; output.csv byte-identical; frozen_v1.toml repointed to `code/prompts/vision_extract.md` "
                 f"(config sha256 `{new_hash}`); superseded prompt deleted.\n")
     # verify: frozen run (cache-only), validator, tests, zip
