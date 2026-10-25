@@ -369,6 +369,17 @@ The eval set has no labels, and D20 alone changed the steps of 160 eval cases, s
 | 2 | A post-audit file can contain a line timestamped `<= audit_at` that contradicts our state (case_114: evidence_11, captured 08-24, trace tr-8691443 at 08-22T10:54) | The trace's state line (line 58) is `resource_id="account_4833" event="profile_lookup_completed" rows="0" http_status="404"`, which **agrees** with our ABSENT. Across all 518 cases: 438 such lines agree with our state. 4 differ (case_126, 326, 374, 430), but each is a bundle snapshot of the account from 6–8 days **before** our newer explicit 404 (the account was deleted in between), so none is newer than our evidence. 118 records with no state `<= audit_at` (116 audit records, 2 legal holds, all INCOMPLETE cases) have a post-audit line showing them RETAINED; all 118 already get VERIFY_RECORD_PRESENT (fix 2). | No contradiction. Using pre-audit lines from post-audit files would change 0 outputs. Not changed. |
 | 3 | Fix-2 verifications for records linked only through a post-audit file (audit_record_6504 in case_114, audit_record_1372 in case_489) | The D12 precedent, sample case_09: `audit_record_4902` is linked only through evidence_06 (captured 09-18, after audit_at 09-16) and has no state observation. Gold step 4 is `VERIFY_RECORD_PRESENT security_service/audit_record_4902 PRESENT ""`, and `account_3960` is `VERIFY_RECORD_ABSENT … ""`. Our case_09 `steps_json` is **identical** to gold. | Behaviour matches the gold precedent exactly. Not changed. |
 
+**Round 7: unclaimed-data audit (label-free, 2026-10-24).** Every resource id mentioned in any evidence file (including PDF text
+and screenshot extractions) or activity row was counted by prefix and checked for a link to a case. The ids `cache_` (284) and
+`email_delivery_` (368) occur only in background activity rows (REFRESH_CACHE, SEND_EMAIL) that carry no identifier and never in an
+evidence file, so they cannot be attributed to anyone; no SECONDARY_IDENTIFIER or PRODUCT_TELEMETRY record exists. Of the unlinked
+resources that do appear in evidence, 307 belong to people without a request, 144 carry no identifier (including the D29 twins) and
+45 belong to requesters. Among those, 28 are deliberate D21 drops (a post-audit unit with no state at or before `audit_at`), and 20
+hits fall in NOT_APPLICABLE cases. A variant scan (5,800 patterns over 547 requesters: phones with 00 or without country code or
+spaces, `+tag` and differently cased or encoded emails, MD5/SHA-1 hashes, user-id variants, names without diacritics) found 186 hits,
+all already matched exactly, plus 4 "Mateo Rios" hits that are a decoy (Mateo Rios Gil, different email and phone). Real misses: 0;
+impact: 0 cases, 0 steps. No code was changed.
+
 ## 8. Known limitations
 <!-- D31:limitation -->
 - **Screenshot prompt replaced (D31, fixed 2026-10-25).** The prompt that originally produced the screenshot responses gave
